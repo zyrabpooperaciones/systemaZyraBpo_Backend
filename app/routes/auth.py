@@ -97,3 +97,26 @@ def logout(credenciales: HTTPAuthorizationCredentials = Depends(seguridad_bearer
         "status": "success",
         "mensaje": "Sesión cerrada correctamente. ¡El token ha muerto con éxito! 💀"
     }
+    
+    # --- IMPORTAMOS EL GUARDIA QUE ACABAMOS DE CREAR (Agrégalo arriba junto a las importaciones si prefieres o déjalo ahí) ---
+from app.core.dependencies import obtener_usuario_actual
+
+# ============================================================================
+# RUTA PROTEGIDA DE PRUEBA: OBTENER DATOS DEL USUARIO LOGUEADO
+# ============================================================================
+@router.get("/me")
+def obtener_perfil_autenticado(usuario_actual: Usuario = Depends(obtener_usuario_actual)):
+    """
+    Ruta bloqueada. Solo responde si le envías un token válido en las cabeceras.
+    """
+    return {
+        "status": "success",
+        "mensaje": "¡Acceso concedido por el Guardián!",
+        "datos_seguros": {
+            "usuario_id": usuario_actual.id,
+            "email": usuario_actual.email,
+            "rol": usuario_actual.rol.nombre,
+            "nombre": usuario_actual.perfil.nombre,
+            "apellido": usuario_actual.perfil.apellido
+        }
+    }

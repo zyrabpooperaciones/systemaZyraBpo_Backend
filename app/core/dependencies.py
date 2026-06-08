@@ -1,0 +1,67 @@
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+from app.core.database import obtener_db
+from app.models.auth import Usuario, Sesion
+from datetime import datetime, timezone
+import hashlib
+
+# Activamos el receptor de tokens Bearer
+seguridad_bearer = HTTPBearer()
+
+def obtener_usuario_actual(
+    credenciales: HTTPAuthorizationCredentials = Depends(seguridad_bearer),
+    db: Session = Depends(obtener_db)
+) -> Usuario:
+    """
+    El Guardián: Revisa el token en cada petición, valida que exista en Postgres,
+    que esté ACTIVO (valida=True) y que no haya expirado. Devuelve al usuario dueño del token.
+    """
+    # 1. Extraer el token y limpiarlo de comillas molestas (como en el logout)
+    token_cliente = credenciales.credentials.strip('"').strip()
+    
+    # 2. Convertirlo a SHA-256 para buscarlo en la base de datos
+    token_hasheado = hashlib.sha256(token_cliente.encode('utf-8')).hexdigest()
+    
+    # 3. Buscar la sesión en Postgres que sea VÁLIDA
+    sesion = db.query(Sesion).filter(
+        Sesion.token_sesion_hash == token_hasheado,
+        Sesion.valida == True
+    ).first()
+    
+    # Si la sesión no existe o ya fue cerrada (False), rebote inmediato
+    if not sesion:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sesión inválida, inexistente o ya cerrada. Inicie sesión de nuevo."
+        )
+    
+    # 4. Verificar si el token ya caducó por tiempo (24 horas)
+    ahora = datetime.now(timezone.utc)
+    if ahora > sesion.expira_en:
+        # Aprovechamos de marcarla como inválida en la BD para que no estorbe
+        sesion.valida = False
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Su sesión ha expirado por límite de tiempo. Inicie sesión de nuevo."
+        )
+        
+    # 5. Buscar el usuario dueño de esa sesión
+    usuario = db.query(Usuario).filter(Usuario.id == sesion.usuario_id).first()
+    
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario no encontrado en el sistema."
+        )
+        
+    # 6. Verificar que el usuario no esté suspendido o inactivo administrativamente
+    if usuario.estado != "ACTIVO":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Acceso denegado. Su usuario se encuentra: {usuario.estado}."
+        )
+        
+    # ¡Luz verde! El guardián abre la puerta y le entrega el usuario a la ruta
+    return usuario

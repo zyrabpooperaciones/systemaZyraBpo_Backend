@@ -36,7 +36,6 @@ class Usuario(Base):
     perfil = relationship("Perfil", back_populates="usuario", uselist=False)
     sesiones = relationship("Sesion", back_populates="usuario")
 
-
 class Perfil(Base):
     __tablename__ = "perfiles"
 
