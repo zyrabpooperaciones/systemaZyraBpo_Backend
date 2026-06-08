@@ -53,7 +53,7 @@ def login(datos_login: LoginRequest, db: Session = Depends(obtener_db)):
 
     token_original = secrets.token_hex(32)
     token_hasheado = hashlib.sha256(token_original.encode('utf-8')).hexdigest()
-    tiempo_expiracion = ahora + timedelta(hours=24)
+    tiempo_expiracion = ahora + timedelta(hours=12)
     
     nueva_sesion = Sesion(usuario_id=usuario.id, token_sesion_hash=token_hasheado, valida=True, expira_en=tiempo_expiracion)
     db.add(nueva_sesion)
@@ -66,7 +66,6 @@ def login(datos_login: LoginRequest, db: Session = Depends(obtener_db)):
         "tipo_token": "bearer",
         "usuario": {"id": usuario.id, "email": usuario.email, "nombre_completo": f"{usuario.perfil.nombre} {usuario.perfil.apellido}", "rol": usuario.rol.nombre, "cargo": usuario.perfil.cargo}
     }
-
 
 # ============================================================================
 # NUEVA RUTA: CERRAR SESIÓN (LOGOUT)

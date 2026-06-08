@@ -1,17 +1,24 @@
-# Entorno Virtual
-venv/
+# --- ENTORNOS VIRTUALES ---
 .venv/
+venv/
 env/
+ENV/
 
-# Caché de Python
+# --- CACHÉ DE PYTHON ---
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
 
-# Variables de entorno secretas
+# --- ARCHIVOS DE CONFIGURACIÓN Y SECRETOS ---
 .env
+.env.local
 
-# Archivos de configuración del editor
+# --- EDITORES DE CÓDIGO ---
 .vscode/
 .idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
