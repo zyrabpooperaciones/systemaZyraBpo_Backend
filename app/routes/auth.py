@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import obtener_db
 from app.models.auth import Usuario, Perfil, Sesion
 from app.services.security import SecurityService
+from app.core.dependencies import obtener_usuario_actual # <-- Movido aquí arriba por orden
 from datetime import datetime, timezone, timedelta
 import secrets
 import hashlib
@@ -14,13 +15,26 @@ seguridad_bearer = HTTPBearer()
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
+# ============================================================================
+# MODELOS DE PETICIÓN (PYDANTIC)
+# ============================================================================
 class LoginRequest(BaseModel):
     email: str
     password: str
 
+class RecuperarPasswordRequest(BaseModel): # <-- Corregido de Recubrir a Recuperar
+    email: str
+
+class RestablecerPasswordRequest(BaseModel):
+    token: str
+    nueva_password: str
+
+
+# ============================================================================
+# RUTA: INICIO DE SESIÓN (LOGIN)
+# ============================================================================
 @router.post("/login")
 def login(datos_login: LoginRequest, db: Session = Depends(obtener_db)):
-    # ... (Todo tu código de login con el escudo de 5 intentos se queda EXACTAMENTE igual) ...
     usuario = db.query(Usuario).filter(Usuario.email == datos_login.email).first()
     if not usuario:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Correo o contraseña incorrectos")
@@ -53,7 +67,7 @@ def login(datos_login: LoginRequest, db: Session = Depends(obtener_db)):
 
     token_original = secrets.token_hex(32)
     token_hasheado = hashlib.sha256(token_original.encode('utf-8')).hexdigest()
-    tiempo_expiracion = ahora + timedelta(hours=12)
+    tiempo_expiracion = ahora + timedelta(hours=12) # <-- ¡Tus 12 horas operativas perfectas!
     
     nueva_sesion = Sesion(usuario_id=usuario.id, token_sesion_hash=token_hasheado, valida=True, expira_en=tiempo_expiracion)
     db.add(nueva_sesion)
@@ -67,47 +81,37 @@ def login(datos_login: LoginRequest, db: Session = Depends(obtener_db)):
         "usuario": {"id": usuario.id, "email": usuario.email, "nombre_completo": f"{usuario.perfil.nombre} {usuario.perfil.apellido}", "rol": usuario.rol.nombre, "cargo": usuario.perfil.cargo}
     }
 
+
 # ============================================================================
-# NUEVA RUTA: CERRAR SESIÓN (LOGOUT)
+# RUTA: CERRAR SESIÓN (LOGOUT)
 # ============================================================================
 @router.post("/logout")
 def logout(credenciales: HTTPAuthorizationCredentials = Depends(seguridad_bearer), db: Session = Depends(obtener_db)):
-    # A. Extraer el token puro que mandó el cliente
     token_cliente = credenciales.credentials.strip('"').strip()
-    
-    # B. Aplicarle el mismo hash SHA-256 para poder buscarlo en Postgres
     token_hasheado = hashlib.sha256(token_cliente.encode('utf-8')).hexdigest()
     
-    # C. Buscar la sesión en la base de datos
     sesion_activa = db.query(Sesion).filter(Sesion.token_sesion_hash == token_hasheado).first()
     
-    # D. Si no existe la sesión o ya era falsa, simplemente avisamos
     if not sesion_activa:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Sesión invalida o no encontrada"
         )
     
-    # E. ¡LA REGLA DE JAIRO! Cambiamos la bandera a FALSE para matar el token
     sesion_activa.valida = False
-    db.commit() # Guardamos en Postgres
+    db.commit() 
     
     return {
         "status": "success",
         "mensaje": "Sesión cerrada correctamente. ¡El token ha muerto con éxito! 💀"
     }
     
-    # --- IMPORTAMOS EL GUARDIA QUE ACABAMOS DE CREAR (Agrégalo arriba junto a las importaciones si prefieres o déjalo ahí) ---
-from app.core.dependencies import obtener_usuario_actual
 
 # ============================================================================
 # RUTA PROTEGIDA DE PRUEBA: OBTENER DATOS DEL USUARIO LOGUEADO
 # ============================================================================
 @router.get("/me")
 def obtener_perfil_autenticado(usuario_actual: Usuario = Depends(obtener_usuario_actual)):
-    """
-    Ruta bloqueada. Solo responde si le envías un token válido en las cabeceras.
-    """
     return {
         "status": "success",
         "mensaje": "¡Acceso concedido por el Guardián!",
@@ -118,4 +122,76 @@ def obtener_perfil_autenticado(usuario_actual: Usuario = Depends(obtener_usuario
             "nombre": usuario_actual.perfil.nombre,
             "apellido": usuario_actual.perfil.apellido
         }
+    }
+
+
+# ============================================================================
+# RUTA: SOLICITAR RECUPERACIÓN (Genera el token seguro)
+# ============================================================================
+@router.post("/recuperar-password")
+def solicitar_recuperacion(datos: RecuperarPasswordRequest, db: Session = Depends(obtener_db)):
+    usuario = db.query(Usuario).filter(Usuario.email == datos.email).first()
+    
+    if not usuario:
+        return {
+            "status": "success",
+            "mensaje": "Si el correo electrónico institucional existe, se han generado las instrucciones."
+        }
+        
+    ahora = datetime.now(timezone.utc)
+    token_original = secrets.token_hex(32)
+    token_hasheado = hashlib.sha256(token_original.encode('utf-8')).hexdigest()
+    tiempo_expiracion = ahora + timedelta(minutes=15)
+    
+    usuario.recuperar_password_token_hash = token_hasheado
+    usuario.recuperar_password_expira = tiempo_expiracion
+    db.commit()
+    
+    return {
+        "status": "success",
+        "mensaje": "Token generado con éxito. (En producción, esto se enviará por email)",
+        "token_de_prueba": token_original  
+    }
+
+
+# ============================================================================
+# RUTA: REESCRIBIR LA CONTRASEÑA (Usa el token para validar)
+# ============================================================================
+@router.post("/restablecer-password")
+def restablecer_password(datos: RestablecerPasswordRequest, db: Session = Depends(obtener_db)):
+    token_cliente_hash = hashlib.sha256(datos.token.encode('utf-8')).hexdigest()
+    usuario = db.query(Usuario).filter(Usuario.recuperar_password_token_hash == token_cliente_hash).first()
+    
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="El enlace de recuperación es inválido o ya fue utilizado."
+        )
+        
+    ahora = datetime.now(timezone.utc)
+    if ahora > usuario.recuperar_password_expira:
+        usuario.recuperar_password_token_hash = None
+        usuario.recuperar_password_expira = None
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="El enlace de recuperación ha expirado (Límite: 15 minutos)."
+        )
+        
+    # Validar que SecurityService tenga implementado exactamente el método hash_password
+    nueva_password_cifrada = SecurityService.generar_hash(datos.nueva_password)
+    
+    usuario.password_hash = nueva_password_cifrada
+    usuario.recuperar_password_token_hash = None
+    usuario.recuperar_password_expira = None
+    
+    # Desbloqueo inmediato por cambio exitoso de credenciales
+    usuario.intentos_fallidos = 0
+    usuario.bloqueado_hasta = None
+    
+    db.commit()
+    
+    return {
+        "status": "success",
+        "mensaje": "¡Contraseña actualizada con éxito! 🎉 Ya puedes iniciar sesión con tus nuevas credenciales."
     }
