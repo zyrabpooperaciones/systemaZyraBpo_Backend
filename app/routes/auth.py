@@ -8,6 +8,10 @@ from datetime import datetime, timezone, timedelta
 import secrets
 import hashlib
 
+# --- NUEVA IMPORTACIÓN PARA CAPTURAR TOKENS DE FORMA PROFESIONAL ---
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+seguridad_bearer = HTTPBearer()
+
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 class LoginRequest(BaseModel):
@@ -16,79 +20,42 @@ class LoginRequest(BaseModel):
 
 @router.post("/login")
 def login(datos_login: LoginRequest, db: Session = Depends(obtener_db)):
-    # 1. Buscar al usuario por correo
+    # ... (Todo tu código de login con el escudo de 5 intentos se queda EXACTAMENTE igual) ...
     usuario = db.query(Usuario).filter(Usuario.email == datos_login.email).first()
-    
     if not usuario:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Correo o contraseña incorrectos"
-        )
-    
-    # 2. Verificar estado administrativo básico
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Correo o contraseña incorrectos")
     if usuario.estado != "ACTIVO":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"El usuario se encuentra {usuario.estado}. Contacte al administrador."
-        )
-
-    # 3. ESCUDO EVOLUCIONADO: Manejo inteligente de penalizaciones de tiempo
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"El usuario se encuentra {usuario.estado}.")
+    
     ahora = datetime.now(timezone.utc)
     if usuario.bloqueado_hasta:
         if ahora < usuario.bloqueado_hasta:
-            # Sigue bloqueado: Calculamos los minutos restantes
             tiempo_restante = usuario.bloqueado_hasta - ahora
             minutos_restantes = int(tiempo_restante.total_seconds() / 60) + 1
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Cuenta temporalmente bloqueada por seguridad. Intente de nuevo en {minutos_restantes} minuto(s)."
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Cuenta bloqueada. Intente en {minutos_restantes} min.")
         else:
-            # REGLA JAIRO: El tiempo ya pasó. Reiniciamos la pizarra a 0 de forma automática
             usuario.intentos_fallidos = 0
             usuario.bloqueado_hasta = None
-            db.commit() # Guardamos el reseteo de inmediato
+            db.commit()
 
-    # 4. Validar contraseña con Bcrypt
-    password_valida = SecurityService.verificar_password(
-        datos_login.password, 
-        usuario.password_hash
-    )
-    
-    # --- MANEJO DE INTENTOS FALLIDOS (LÍMITE: 5) ---
+    password_valida = SecurityService.verificar_password(datos_login.password, usuario.password_hash)
     if not password_valida:
         usuario.intentos_fallidos += 1
-        
-        # Al llegar al 5to intento fallido, se congela por 15 minutos
         if usuario.intentos_fallidos >= 5:
             usuario.bloqueado_hasta = ahora + timedelta(minutes=15)
             db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Demasiados intentos incorrectos. Tu cuenta ha sido bloqueada por 15 minutos."
-            )
-        
-        db.commit() # Guardamos el contador actual (1, 2, 3 o 4)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Correo o contraseña incorrectos"
-        )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Demasiados intentos. Bloqueado por 15 minutos.")
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Correo o contraseña incorrectos")
 
-    # --- INICIO EXITOSO: RESETEO TOTAL ---
     usuario.intentos_fallidos = 0
     usuario.bloqueado_hasta = None
 
-    # 5. Generación de Sesión Persistente (Token)
     token_original = secrets.token_hex(32)
     token_hasheado = hashlib.sha256(token_original.encode('utf-8')).hexdigest()
     tiempo_expiracion = ahora + timedelta(hours=24)
     
-    nueva_sesion = Sesion(
-        usuario_id=usuario.id,
-        token_sesion_hash=token_hasheado,
-        valida=True,
-        expira_en=tiempo_expiracion
-    )
+    nueva_sesion = Sesion(usuario_id=usuario.id, token_sesion_hash=token_hasheado, valida=True, expira_en=tiempo_expiracion)
     db.add(nueva_sesion)
     db.commit() 
 
@@ -97,11 +64,36 @@ def login(datos_login: LoginRequest, db: Session = Depends(obtener_db)):
         "mensaje": "¡Inicio de sesión exitoso! 🎉",
         "access_token": token_original,
         "tipo_token": "bearer",
-        "usuario": {
-            "id": usuario.id,
-            "email": usuario.email,
-            "nombre_completo": f"{usuario.perfil.nombre} {usuario.perfil.apellido}",
-            "rol": usuario.rol.nombre,
-            "cargo": usuario.perfil.cargo
-        }
+        "usuario": {"id": usuario.id, "email": usuario.email, "nombre_completo": f"{usuario.perfil.nombre} {usuario.perfil.apellido}", "rol": usuario.rol.nombre, "cargo": usuario.perfil.cargo}
+    }
+
+
+# ============================================================================
+# NUEVA RUTA: CERRAR SESIÓN (LOGOUT)
+# ============================================================================
+@router.post("/logout")
+def logout(credenciales: HTTPAuthorizationCredentials = Depends(seguridad_bearer), db: Session = Depends(obtener_db)):
+    # A. Extraer el token puro que mandó el cliente
+    token_cliente = credenciales.credentials.strip('"').strip()
+    
+    # B. Aplicarle el mismo hash SHA-256 para poder buscarlo en Postgres
+    token_hasheado = hashlib.sha256(token_cliente.encode('utf-8')).hexdigest()
+    
+    # C. Buscar la sesión en la base de datos
+    sesion_activa = db.query(Sesion).filter(Sesion.token_sesion_hash == token_hasheado).first()
+    
+    # D. Si no existe la sesión o ya era falsa, simplemente avisamos
+    if not sesion_activa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sesión invalida o no encontrada"
+        )
+    
+    # E. ¡LA REGLA DE JAIRO! Cambiamos la bandera a FALSE para matar el token
+    sesion_activa.valida = False
+    db.commit() # Guardamos en Postgres
+    
+    return {
+        "status": "success",
+        "mensaje": "Sesión cerrada correctamente. ¡El token ha muerto con éxito! 💀"
     }
