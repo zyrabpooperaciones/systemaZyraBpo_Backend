@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from app.core.database import obtener_db
 from app.models.auth import Usuario, Perfil, Sesion
 from app.services.security import SecurityService
-from app.core.dependencies import obtener_usuario_actual # <-- Movido aquí arriba por orden
+from app.core.dependencies import obtener_usuario_actual 
+from app.services.email_service import EmailService
 from datetime import datetime, timezone, timedelta
 import secrets
 import hashlib
@@ -22,7 +23,7 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
-class RecuperarPasswordRequest(BaseModel): # <-- Corregido de Recubrir a Recuperar
+class RecuperarPasswordRequest(BaseModel): 
     email: str
 
 class RestablecerPasswordRequest(BaseModel):
@@ -58,7 +59,7 @@ def login(datos_login: LoginRequest, db: Session = Depends(obtener_db)):
         if usuario.intentos_fallidos >= 5:
             usuario.bloqueado_hasta = ahora + timedelta(minutes=15)
             db.commit()
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Demasiados intentos. Bloqueado por 15 minutos.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Demasiados intentos. Bloqueado por 15 minutes.")
         db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Correo o contraseña incorrectos")
 
@@ -67,7 +68,7 @@ def login(datos_login: LoginRequest, db: Session = Depends(obtener_db)):
 
     token_original = secrets.token_hex(32)
     token_hasheado = hashlib.sha256(token_original.encode('utf-8')).hexdigest()
-    tiempo_expiracion = ahora + timedelta(hours=12) # <-- ¡Tus 12 horas operativas perfectas!
+    tiempo_expiracion = ahora + timedelta(hours=12) 
     
     nueva_sesion = Sesion(usuario_id=usuario.id, token_sesion_hash=token_hasheado, valida=True, expira_en=tiempo_expiracion)
     db.add(nueva_sesion)
@@ -126,7 +127,7 @@ def obtener_perfil_autenticado(usuario_actual: Usuario = Depends(obtener_usuario
 
 
 # ============================================================================
-# RUTA: SOLICITAR RECUPERACIÓN (Genera el token seguro)
+# RUTA: SOLICITAR RECUPERACIÓN (¡Automatizada con envío real! 📨)
 # ============================================================================
 @router.post("/recuperar-password")
 def solicitar_recuperacion(datos: RecuperarPasswordRequest, db: Session = Depends(obtener_db)):
@@ -147,10 +148,21 @@ def solicitar_recuperacion(datos: RecuperarPasswordRequest, db: Session = Depend
     usuario.recuperar_password_expira = tiempo_expiracion
     db.commit()
     
+    # ¡EL ROBOT CARTERO ENTRA EN ACCIÓN!
+    # Intenta enviar el correo real de forma segura usando la cuenta configurada
+    correo_enviado = EmailService.enviar_correo_recuperacion(usuario.email, token_original)
+    
+    # Si Google rechaza la conexión o falla el SMTP, el backend frena y avisa
+    if not correo_enviado:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="El token se generó, pero el servidor de correos falló al enviarlo."
+        )
+    
+    # El token_de_prueba se eliminó del JSON. Ahora viaja 100% oculto y seguro en el Mail
     return {
         "status": "success",
-        "mensaje": "Token generado con éxito. (En producción, esto se enviará por email)",
-        "token_de_prueba": token_original  
+        "mensaje": "Las instrucciones de recuperación han sido enviadas a tu correo electrónico institucional. Revisa tu bandeja de entrada."
     }
 
 
@@ -178,7 +190,7 @@ def restablecer_password(datos: RestablecerPasswordRequest, db: Session = Depend
             detail="El enlace de recuperación ha expirado (Límite: 15 minutos)."
         )
         
-    # Validar que SecurityService tenga implementado exactamente el método hash_password
+    # Acoplado perfectamente al nombre real de tu SecurityService
     nueva_password_cifrada = SecurityService.generar_hash(datos.nueva_password)
     
     usuario.password_hash = nueva_password_cifrada
