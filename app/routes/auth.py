@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from app.core.database import obtener_db
 from app.models.auth import Usuario, Perfil, Sesion
@@ -20,11 +20,11 @@ router = APIRouter(prefix="/auth", tags=["Autenticación"])
 # MODELOS DE PETICIÓN (PYDANTIC)
 # ============================================================================
 class LoginRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 class RecuperarPasswordRequest(BaseModel): 
-    email: str
+    email: EmailStr
 
 class RestablecerPasswordRequest(BaseModel):
     token: str
@@ -59,7 +59,7 @@ def login(datos_login: LoginRequest, db: Session = Depends(obtener_db)):
         if usuario.intentos_fallidos >= 5:
             usuario.bloqueado_hasta = ahora + timedelta(minutes=15)
             db.commit()
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Demasiados intentos. Bloqueado por 15 minutes.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Demasiados intentos. Bloqueado por 15 minutos.")
         db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Correo o contraseña incorrectos")
 

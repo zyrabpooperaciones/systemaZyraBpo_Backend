@@ -4,13 +4,21 @@ from sqlalchemy.orm import Session
 from app.core.database import obtener_db
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import auth
+import os
+import logging
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Configuración básica de logs para el sistema
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("zyra_bpo_backend")
 
 app = FastAPI(title="Zyra BPO - API")
 
-# Escudo de permisos para Angular
-origins = [
-    "http://localhost:4200",
-]
+# Escudo de permisos para Angular y otros orígenes permitidos
+cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:4200")
+origins = [origin.strip() for origin in cors_origins_raw.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,4 +44,5 @@ def probar_conexion_db(db: Session = Depends(obtener_db)):
             "prueba_calculo": f"Postgres dice que 1 + 1 es {resultado}"
         }
     except Exception as e:
-        return {"status": "error", "detalle": str(e)}
+        logger.error(f"Error crítico de conexión a la base de datos: {e}", exc_info=True)
+        return {"status": "error", "detalle": "No se pudo conectar a la base de datos interna."}
