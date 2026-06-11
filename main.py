@@ -3,7 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.database import obtener_db
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import auth
+from app.routes import api
 import os
 import logging
 from dotenv import load_dotenv
@@ -28,7 +28,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router)
+app.include_router(api.router)
 
 @app.get("/")
 def leer_raiz():
