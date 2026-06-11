@@ -31,6 +31,13 @@ class AuthService:
             )
         
         ahora = datetime.now(timezone.utc)
+
+        db.query(Sesion).filter(
+            Sesion.valida == True,
+            Sesion.expira_en < ahora
+        ).update({Sesion.valida: False}, synchronize_session=False)
+        db.commit()
+
         if usuario.bloqueado_hasta:
             if ahora < usuario.bloqueado_hasta:
                 tiempo_restante = usuario.bloqueado_hasta - ahora
