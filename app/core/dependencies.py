@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.core.database import obtener_db
-from app.models.auth import Usuario, Sesion
+from app.models.auth import Usuario, Sesion, Modulo, RolModuloNivel
 from datetime import datetime, timezone
 import hashlib
 
@@ -65,3 +65,36 @@ def obtener_usuario_actual(
         
     # ¡Luz verde! El guardián abre la puerta y le entrega el usuario a la ruta
     return usuario
+
+def verificar_permiso(modulo_interno: str, nivel_requerido: int):
+    """
+    Dependencia que verifica si el usuario autenticado tiene permisos
+    para acceder a un modulo con un nivel minimo requerido.
+    """
+    def dependencia(
+        usuario_actual: Usuario = Depends(obtener_usuario_actual),
+        db: Session = Depends(obtener_db)
+    ) -> Usuario:
+        # Buscar el modulo por su nombre interno
+        modulo = db.query(Modulo).filter(Modulo.nombre_interno == modulo_interno).first()
+        if not modulo:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"El modulo '{modulo_interno}' no existe en el sistema."
+            )
+            
+        # Buscar si el rol del usuario tiene el modulo asignado
+        permiso = db.query(RolModuloNivel).filter(
+            RolModuloNivel.rol_id == usuario_actual.rol_id,
+            RolModuloNivel.modulo_id == modulo.id
+        ).first()
+        
+        # Si no hay registro o el nivel es inferior al requerido
+        if not permiso or permiso.nivel_acceso < nivel_requerido:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene permisos suficientes para realizar esta accion."
+            )
+            
+        return usuario_actual
+    return dependencia

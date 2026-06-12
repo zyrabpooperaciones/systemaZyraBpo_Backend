@@ -3,7 +3,7 @@ import secrets
 import hashlib
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from app.models.auth import Usuario, Perfil, Sesion
+from app.models.auth import Usuario, Perfil, Sesion, Modulo, RolModuloNivel
 from app.services.security import SecurityService
 from app.services.email_service import EmailService
 from app.schemas.auth import (
@@ -83,6 +83,18 @@ class AuthService:
         db.add(nueva_sesion)
         db.commit() 
 
+        # Consultar los permisos del rol en la base de datos
+        permisos_db = db.query(RolModuloNivel, Modulo).join(
+            Modulo, RolModuloNivel.modulo_id == Modulo.id
+        ).filter(
+            RolModuloNivel.rol_id == usuario.rol_id
+        ).all()
+        
+        permisos_lista = [
+            {"modulo": modulo.nombre_interno, "nivel": p.nivel_acceso}
+            for p, modulo in permisos_db
+        ]
+
         return {
             "status": "success",
             "mensaje": "¡Inicio de sesión exitoso! 🎉",
@@ -96,7 +108,8 @@ class AuthService:
                 "cargo": usuario.perfil.cargo,
                 "ci": usuario.perfil.ci,
                 "telefono": usuario.perfil.telefono
-            }
+            },
+            "permisos": permisos_lista
         }
 
     @staticmethod
@@ -119,7 +132,19 @@ class AuthService:
         }
 
     @staticmethod
-    def obtener_perfil(usuario_actual: Usuario) -> dict:
+    def obtener_perfil(db: Session, usuario_actual: Usuario) -> dict:
+        # Consultar los permisos del rol en la base de datos
+        permisos_db = db.query(RolModuloNivel, Modulo).join(
+            Modulo, RolModuloNivel.modulo_id == Modulo.id
+        ).filter(
+            RolModuloNivel.rol_id == usuario_actual.rol_id
+        ).all()
+        
+        permisos_lista = [
+            {"modulo": modulo.nombre_interno, "nivel": p.nivel_acceso}
+            for p, modulo in permisos_db
+        ]
+
         return {
             "status": "success",
             "mensaje": "¡Acceso concedido por el Guardián!",
@@ -129,7 +154,8 @@ class AuthService:
                 "rol": usuario_actual.rol.nombre,
                 "nombre": usuario_actual.perfil.nombre,
                 "apellido": usuario_actual.perfil.apellido
-            }
+            },
+            "permisos": permisos_lista
         }
 
     @staticmethod

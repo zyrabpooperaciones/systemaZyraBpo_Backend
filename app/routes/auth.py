@@ -37,11 +37,14 @@ def logout(credenciales: HTTPAuthorizationCredentials = Depends(seguridad_bearer
     return AuthService.cerrar_sesion(db, token_cliente)
 
 @router.get("/me", response_model=MeResponse)
-def obtener_perfil_autenticado(usuario_actual: Usuario = Depends(obtener_usuario_actual)):
+def obtener_perfil_autenticado(
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+    db: Session = Depends(obtener_db)
+):
     """
     Retorna los datos del usuario autenticado si la sesión es válida.
     """
-    return AuthService.obtener_perfil(usuario_actual)
+    return AuthService.obtener_perfil(db, usuario_actual)
 
 @router.put("/perfil", response_model=PerfilUpdateResponse)
 def actualizar_perfil(

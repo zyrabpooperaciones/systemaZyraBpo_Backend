@@ -36,12 +36,20 @@ class UsuarioInfo(BaseModel):
     class Config:
         from_attributes = True
 
+class PermisoUsuarioInfo(BaseModel):
+    modulo: str
+    nivel: int
+
+    class Config:
+        from_attributes = True
+
 class LoginResponse(BaseModel):
     status: str = "success"
     mensaje: str
     access_token: str
     tipo_token: str = "bearer"
     usuario: UsuarioInfo
+    permisos: list[PermisoUsuarioInfo]
 
 class MeDatosSeguros(BaseModel):
     usuario_id: int
@@ -54,6 +62,7 @@ class MeResponse(BaseModel):
     status: str = "success"
     mensaje: str
     datos_seguros: MeDatosSeguros
+    permisos: list[PermisoUsuarioInfo]
 
 class PerfilUpdateResponse(BaseModel):
     status: str = "success"
