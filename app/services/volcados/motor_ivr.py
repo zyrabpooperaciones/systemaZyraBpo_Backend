@@ -59,6 +59,7 @@ class MotorVolcadoIVR:
         df_limpio = pd.DataFrame()
         df_limpio["Fecha / Hora"] = df_discador["Fecha / Hora"] if "Fecha / Hora" in df_discador.columns else np.nan
         df_limpio["Numero"] = df_discador["Numero"] if "Numero" in df_discador.columns else np.nan
+        df_limpio["Atendio"] = df_discador["Atendio"] if "Atendio" in df_discador.columns else np.nan
 
         if "paraCRM" in df_discador.columns:
             df_limpio["Data"] = df_discador["paraCRM"].astype(str).str.split("###").str[0].str.strip()
@@ -79,14 +80,26 @@ class MotorVolcadoIVR:
         ]
 
         n1_opciones = ["No contacto", "No contacto", "Contacto efectivo"]
-        n2_opciones = ["No contacto manana - tarde", "No contacto manana - tarde", "Renuente"]
-        n3_opciones = ["No contesta - Mensaje en grabadora", "No contesta - Mensaje en grabadora", "Consultora renuente"]
-        n4_opciones = ["No Contesta BOT-No contesta", "No contesta - Mensaje en grabadora", "Contesta BOT-Si-Se entrega informacion de deuda"]
+        n2_opciones = [
+            "No contacto manana / tarde",
+            "No contacto manana / tarde",
+            "Renuente",
+        ]
+        n3_opciones = [
+            "No contesta / Mensaje en grabadora",
+            "No contesta / Mensaje en grabadora",
+            "Consultora renuente",
+        ]
+        n4_opciones = [
+            "No contesta / Mensaje en grabadora",
+            "No contesta / Mensaje en grabadora",
+            "Cuelga la llamada",
+        ]
 
         df_limpio["nivel1"] = np.select(condiciones, n1_opciones, default="No contacto")
-        df_limpio["nivel2"] = np.select(condiciones, n2_opciones, default="No contacto manana - tarde")
-        df_limpio["nivel3"] = np.select(condiciones, n3_opciones, default="No contesta - Mensaje en grabadora")
-        df_limpio["nivel4"] = np.select(condiciones, n4_opciones, default="No Contesta BOT-No contesta")
+        df_limpio["nivel2"] = np.select(condiciones, n2_opciones, default="No contacto manana / tarde")
+        df_limpio["nivel3"] = np.select(condiciones, n3_opciones, default="No contesta / Mensaje en grabadora")
+        df_limpio["nivel4"] = np.select(condiciones, n4_opciones, default="No contesta / Mensaje en grabadora")
 
         return df_limpio
 
@@ -123,7 +136,7 @@ class MotorVolcadoIVR:
         else:
             df_volcado["Codigo"] = np.nan
 
-        fechas_dt = pd.to_datetime(df_limpio.get("Fecha / Hora", pd.Series()), errors="coerce")
+        fechas_dt = pd.to_datetime(df_limpio.get("Fecha / Hora", pd.Series()), format='mixed', dayfirst=True, errors="coerce")
 
         if "Fecha / Hora" in df_limpio.columns:
             df_volcado["Fecha gestion"] = fechas_dt.dt.strftime("%d/%m/%Y").fillna(
@@ -147,7 +160,16 @@ class MotorVolcadoIVR:
 
         df_volcado["Telefono"] = df_limpio.get("Numero", df_limpio.get("NÃºmero", np.nan))
         df_volcado["Canalidad"] = "IVR"
-        df_volcado["Observacion"] = np.nan
+        
+        if "Atendio" in df_limpio.columns:
+            atendio_limpio = df_limpio["Atendio"].astype(str).str.strip().str.upper()
+            df_volcado["Observacion"] = np.where(
+                atendio_limpio == "HUMANO",
+                "Notificado por BOT",
+                None
+            )
+        else:
+            df_volcado["Observacion"] = np.nan
 
         # Reemplazar NaN visualmente
         df_volcado = df_volcado.replace(["nan", "NaT", "NaN"], "").fillna("")

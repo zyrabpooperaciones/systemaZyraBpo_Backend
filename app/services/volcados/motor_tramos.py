@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import io
+import re
 from typing import Tuple, Optional
 
 class MotorVolcadoTramos:
@@ -8,6 +9,45 @@ class MotorVolcadoTramos:
     Motor centralizado para procesar los volcados de Tramos telefónicos.
     Unifica las funcionalidades de unificar_reportes.py y generar_volcado.py.
     """
+
+    @staticmethod
+    def extraer_datos_comentario(comentario) -> Tuple[Optional[str], Optional[float]]:
+        """
+        Extrae fecha y monto de un comentario si están encerrados en paréntesis
+        al final del texto, ej: "(24/06/2026-214.15)" o "(23/06/2026)" o "(20-06-26 - 45.26)".
+        """
+        fecha_ext = None
+        monto_ext = None
+        if not isinstance(comentario, str) or not comentario.strip():
+            return None, None
+
+        # Buscar el último conjunto de paréntesis al final del string
+        match = re.search(r"\(([^)]+)\)\s*$", comentario.strip())
+        if match:
+            contenido = match.group(1).strip()
+            
+            # 1. Buscar la fecha usando una expresión regular de fecha (DD/MM/AAAA, DD-MM-AA, etc.)
+            match_fecha = re.search(r"\b\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}\b", contenido)
+            
+            resto = contenido
+            if match_fecha:
+                fecha_ext = match_fecha.group(0).strip()
+                # Removemos la fecha encontrada para buscar el monto en el resto del texto
+                resto = contenido.replace(fecha_ext, "")
+                
+                # Limpiar cualquier caracter no permitido en la fecha
+                fecha_ext = re.sub(r"[^\d/\-.]", "", fecha_ext)
+
+            # 2. Buscar el monto en la parte restante
+            match_monto = re.search(r"\b\d+(?:[.,]\d+)?\b", resto)
+            if match_monto:
+                val = match_monto.group(0).replace(",", ".")
+                try:
+                    monto_ext = float(val)
+                except ValueError:
+                    monto_ext = None
+                    
+        return fecha_ext, monto_ext
 
     @staticmethod
     def _leer_archivo(contenido_bytes: bytes, extension: str) -> pd.DataFrame:
@@ -145,37 +185,23 @@ class MotorVolcadoTramos:
             df["Nivel 2"] = partes_t1.str[1].fillna("").str.strip()
 
         if "Tipificación 2" in df.columns:
-            df["Tipificación 2"] = df["Tipificación 2"].astype(str).str.strip()
+            t2_series = df["Tipificación 2"].astype(str).str.strip()
+            partes_t2 = t2_series.str.split("-", n=1)
+            df["Nivel 3"] = partes_t2.str[0].fillna("").str.strip()
+            df["Nivel 4"] = partes_t2.str[1].fillna("").str.strip()
 
-            excepcion_1 = "No contesta - Mensaje en grabadora - No Contesta BOT-Buzon"
-            excepcion_2 = "No contesta - Mensaje en grabadora - No Contesta BOT-No contesta"
-            excepcion_3 = "No contesta - Mensaje en grabadora - No contesta - Mensaje en grabadora"
+        # Reemplazar guion bajo "_" por barra "/" en Nivel 2, 3 y 4
+        for col in ["Nivel 2", "Nivel 3", "Nivel 4"]:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.replace("_", "/", regex=False)
 
-            for i in df.index:
-                valor_original = df.at[i, "Tipificación 2"]
-                if valor_original in [excepcion_1, excepcion_2, excepcion_3]:
-                    df.at[i, "Nivel 3"] = "No contesta - Mensaje en grabadora"
-                    if valor_original == excepcion_1:
-                        df.at[i, "Nivel 4"] = "No Contesta BOT-Buzon"
-                    elif valor_original == excepcion_2:
-                        df.at[i, "Nivel 4"] = "No Contesta BOT-No contesta"
-                    elif valor_original == excepcion_3:
-                        df.at[i, "Nivel 4"] = "No contesta - Mensaje en grabadora"
-                else:
-                    if "-" in valor_original:
-                        partes = valor_original.split("-", 1)
-                        df.at[i, "Nivel 3"] = partes[0].strip()
-                        df.at[i, "Nivel 4"] = partes[1].strip()
-                    else:
-                        df.at[i, "Nivel 3"] = valor_original
-                        df.at[i, "Nivel 4"] = ""
-
+        # Corrección de tipificaciones incompletas en Nivel 4 (reemplazo exacto)
         if "Nivel 4" in df.columns:
-            df["Nivel 4"] = df["Nivel 4"].str.replace(
-                "Contesta BOT-Corta llamada-No se entrega i",
-                "Contesta BOT-Corta llamada-No se entrega informacion de deuda",
-                regex=False,
-            )
+            df["Nivel 4"] = df["Nivel 4"].replace({
+                "Completo pedido gerente de zon": "Completo pedido gerente de zona",
+                "Completo pedido socia empresa": "Completo pedido socia empresaria",
+                "No contesta / Mensaje en gr": "No contesta / Mensaje en grabadora"
+            })
 
         return df
 
@@ -220,10 +246,10 @@ class MotorVolcadoTramos:
         es_corto = df_resultado["_atendio_limpio"] == "CORTO"
 
         df_resultado.loc[es_vacio_t1 & es_corto, "Tipificación 1"] = "Contacto efectivo - Renuente"
-        df_resultado.loc[es_vacio_t2 & es_corto, "Tipificación 2"] = "Consultora renuente - Contesta BOT-Si-Corta la llamada"
+        df_resultado.loc[es_vacio_t2 & es_corto, "Tipificación 2"] = "Consultora renuente - Cuelga la llamada"
 
-        df_resultado["Tipificación 1"] = df_resultado["Tipificación 1"].fillna("No contacto - No contacto manana - tarde")
-        df_resultado["Tipificación 2"] = df_resultado["Tipificación 2"].fillna("No contesta - Mensaje en grabadora - No contesta - Mensaje en grabadora")
+        df_resultado["Tipificación 1"] = df_resultado["Tipificación 1"].fillna("No contacto - No contacto manana / tarde")
+        df_resultado["Tipificación 2"] = df_resultado["Tipificación 2"].fillna("No contesta / Mensaje en grabadora - No contesta / Mensaje en grabadora")
         df_resultado = df_resultado.drop(columns=["_atendio_limpio"])
 
         if "Entidad" in df_resultado.columns:
@@ -296,13 +322,22 @@ class MotorVolcadoTramos:
         df_volcado["Nivel 4"] = df_limpio["Nivel 4"] if "Nivel 4" in df_limpio.columns else ""
 
         df_volcado["Fecha Promesa Pago"] = df_limpio["Fecha Agenda"] if "Fecha Agenda" in df_limpio.columns else ""
-        df_volcado["Monto Promesa Pago"] = ""
+        df_volcado["Monto Promesa Pago"] = None
+
+        if "Comentario" in df_limpio.columns:
+            for idx, comentario in df_limpio["Comentario"].items():
+                fecha_ext, monto_ext = self.extraer_datos_comentario(comentario)
+                if fecha_ext:
+                    df_volcado.at[idx, "Fecha Promesa Pago"] = fecha_ext
+                if monto_ext:
+                    df_volcado.at[idx, "Monto Promesa Pago"] = monto_ext
+
         df_volcado["Telefono"] = df_limpio["Teléfono"] if "Teléfono" in df_limpio.columns else ""
         df_volcado["Canalidad"] = "Telefonica"
         df_volcado["Observacion"] = df_limpio["Comentario"] if "Comentario" in df_limpio.columns else ""
 
         df_volcado["Fecha Promesa Pago"] = pd.to_datetime(
-            df_volcado["Fecha Promesa Pago"], dayfirst=True, errors="coerce"
+            df_volcado["Fecha Promesa Pago"], format='mixed', dayfirst=True, errors="coerce"
         ).dt.strftime("%d/%m/%Y")
 
         df_volcado = df_volcado.replace(["nan", "NaT", "NaN"], "").fillna("")
