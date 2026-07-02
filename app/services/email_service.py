@@ -1,18 +1,15 @@
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+from app.core.config import settings
 
 class EmailService:
     # CONFIGURACIÓN SMTP DE GMAIL
     SMTP_SERVER = "smtp.gmail.com"
     SMTP_PORT = 587
-    EMAIL_EMISOR = os.getenv("EMAIL_EMISOR")
-    EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD") 
-    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")
+    EMAIL_EMISOR = settings.EMAIL_EMISOR
+    EMAIL_PASSWORD = settings.EMAIL_PASSWORD 
+    FRONTEND_URL = settings.FRONTEND_URL
 
     @staticmethod
     def enviar_correo_recuperacion(email_destino: str, token: str):

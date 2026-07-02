@@ -5,10 +5,6 @@ import re
 from typing import Tuple, Optional
 
 class MotorVolcadoTramos:
-    """
-    Motor centralizado para procesar los volcados de Tramos telefónicos.
-    Unifica las funcionalidades de unificar_reportes.py y generar_volcado.py.
-    """
 
     @staticmethod
     def extraer_datos_comentario(comentario) -> Tuple[Optional[str], Optional[float]]:
@@ -88,6 +84,65 @@ class MotorVolcadoTramos:
         return df
 
     @staticmethod
+    def validar_columnas_obligatorias(df: pd.DataFrame, columnas_requeridas: list[str], nombre_archivo: str):
+        columnas_faltantes = [col for col in columnas_requeridas if col not in df.columns]
+        if columnas_faltantes:
+            raise ValueError(
+                f"El archivo '{nombre_archivo}' es inválido. Faltan las siguientes columnas obligatorias: {columnas_faltantes}."
+            )
+
+    @staticmethod
+    def normalizar_y_mapear_columnas(df: pd.DataFrame, columnas_objetivo: list[str]) -> pd.DataFrame:
+        
+        import unicodedata
+
+        def simplificar(texto: str) -> str:
+            if not isinstance(texto, str):
+                return ""
+            # Strip and lowercase
+            t = texto.strip().lower()
+            # Normalize to NFD and strip accents
+            t = "".join(
+                c for c in unicodedata.normalize('NFD', t)
+                if unicodedata.category(c) != 'Mn'
+            )
+            # Standard simplifications
+            t = t.replace('ñ', 'n')
+            # Remove all non-alphanumeric chars
+            t = "".join(c for c in t if c.isalnum())
+            return t
+
+        # Construir mapeo de simplificados oficiales
+        mapeo_oficiales = {}
+        for col_oficial in columnas_objetivo:
+            sim = simplificar(col_oficial)
+            mapeo_oficiales[sim] = col_oficial
+
+        rename_dict = {}
+        for col in df.columns:
+            if not isinstance(col, str):
+                continue
+            sim_col = simplificar(col)
+
+            # Coincidencia exacta simplificada
+            if sim_col in mapeo_oficiales:
+                rename_dict[col] = mapeo_oficiales[sim_col]
+            # Coincidencias especiales para 'campana' / 'campania'
+            elif sim_col in ["campana", "campania", "campana"]:
+                if "Campana" in columnas_objetivo:
+                    rename_dict[col] = "Campana"
+                elif "campania" in columnas_objetivo:
+                    rename_dict[col] = "campania"
+            # Coincidencias especiales para 'fecha / hora'
+            elif sim_col in ["fechayhora", "fechahora"]:
+                if "Fecha / Hora" in columnas_objetivo:
+                    rename_dict[col] = "Fecha / Hora"
+
+        if rename_dict:
+            df = df.rename(columns=rename_dict)
+        return df
+
+    @staticmethod
     def limpiar_codigo(serie: pd.Series) -> pd.Series:
         return (
             serie.astype(str)
@@ -97,10 +152,8 @@ class MotorVolcadoTramos:
             .fillna("")
         )
 
-    # =========================================================================
     # FASE 1: UNIFICACIÓN
-    # =========================================================================
-    
+
     def limpiar_datos(self, df_discador: pd.DataFrame, df_crm: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         if not df_discador.empty:
             if "paraCRM" in df_discador.columns:
@@ -289,9 +342,7 @@ class MotorVolcadoTramos:
 
         return df_final
 
-    # =========================================================================
     # FASE 2: GENERACIÓN FINAL (ESTRUCTURA CORPORATIVA)
-    # =========================================================================
 
     def construir_volcado(self, df_limpio: pd.DataFrame) -> pd.DataFrame:
         df_volcado = pd.DataFrame()
@@ -346,9 +397,7 @@ class MotorVolcadoTramos:
 
         return df_volcado
 
-    # =========================================================================
     # MÉTODO ORQUESTADOR
-    # =========================================================================
 
     def ejecutar(
         self,
@@ -368,14 +417,30 @@ class MotorVolcadoTramos:
         df_base = self._leer_archivo(base_bytes, base_ext)
         if not df_base.empty:
             df_base = self.normalizar_columnas(df_base)
+            df_base = self.normalizar_y_mapear_columnas(df_base, ["Codigo Cliente", "Campana"])
+        self.validar_columnas_obligatorias(df_base, ["Codigo Cliente", "Campana"], "Base Completa")
 
         df_discador = self._leer_archivo(discador_bytes, discador_ext) if discador_bytes else pd.DataFrame()
-        if not df_discador.empty:
+        if discador_bytes:
             df_discador = self.normalizar_columnas(df_discador)
+            df_discador = self.normalizar_y_mapear_columnas(
+                df_discador,
+                ["Fecha / Hora", "Atendió", "Número", "paraCRM", "Data", "Comentario", "Tipificación 1", "Tipificación 2", "Fecha Agenda", "campania", "Teléfono 1"]
+            )
+            self.validar_columnas_obligatorias(df_discador, ["Fecha / Hora", "Atendió", "Número"], "Discador")
+            if "paraCRM" not in df_discador.columns and "Data" not in df_discador.columns:
+                raise ValueError(
+                    "El archivo 'Discador' es inválido. Debe contener al menos una de las siguientes columnas: ['paraCRM', 'Data']."
+                )
 
         df_crm = self._leer_archivo(crm_bytes, crm_ext) if crm_bytes else pd.DataFrame()
         if not df_crm.empty:
             df_crm = self.normalizar_columnas(df_crm)
+            df_crm = self.normalizar_y_mapear_columnas(
+                df_crm,
+                ["Fecha / Hora", "Data", "Comentario", "Tipificación 1", "Tipificación 2", "Fecha Agenda", "Teléfono 1"]
+            )
+            self.validar_columnas_obligatorias(df_crm, ["Fecha / Hora", "Data"], "CRM")
 
         # 2. Unificación
         discador_clean, crm_clean = self.limpiar_datos(df_discador, df_crm)

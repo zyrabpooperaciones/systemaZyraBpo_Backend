@@ -9,28 +9,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
-
-# Cargamos las variables de entorno desde el archivo .env
-load_dotenv()
-
-# Construimos la URL de conexión a la base de datos de forma dinámica
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME")
-
-if not all([DB_USER, DB_PASSWORD, DB_NAME]):
-    raise ValueError("Faltan variables de entorno esenciales (DB_USER, DB_PASSWORD, DB_NAME) en tu archivo .env")
-
-URL_BASE_DATOS = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+from app.core.config import settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
-# Sobrescribimos la URL de conexión en la configuración con nuestra URL dinámica
-config.set_main_option("sqlalchemy.url", URL_BASE_DATOS)
+# Sobrescribimos la URL de conexión en la configuración con nuestra URL centralizada
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
