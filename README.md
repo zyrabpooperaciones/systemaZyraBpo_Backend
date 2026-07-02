@@ -125,3 +125,7 @@ web_backend/
 ## 📝 Notas Adicionales
 
 - Si agregas nuevas librerías al proyecto, recuerda actualizar el archivo de dependencias ejecutando: `pip freeze > requirements.txt`
+
+venv\Scripts\python -m uvicorn main:app --host 0.0.0.0 --port 8000
+
+

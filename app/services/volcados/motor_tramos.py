@@ -12,34 +12,36 @@ class MotorVolcadoTramos:
 
     @staticmethod
     def extraer_datos_comentario(comentario) -> Tuple[Optional[str], Optional[float]]:
-        """
-        Extrae fecha y monto de un comentario si están encerrados en paréntesis
-        al final del texto, ej: "(24/06/2026-214.15)" o "(23/06/2026)" o "(20-06-26 - 45.26)".
-        """
+        
         fecha_ext = None
         monto_ext = None
         if not isinstance(comentario, str) or not comentario.strip():
             return None, None
 
-        # Buscar el último conjunto de paréntesis al final del string
-        match = re.search(r"\(([^)]+)\)\s*$", comentario.strip())
+        # 1. Buscar el último conjunto de paréntesis en el string (incluso si hay texto/puntos después)
+        match = re.search(r"\(([^)]+)\)[^()]*$", comentario.strip())
         if match:
             contenido = match.group(1).strip()
             
-            # 1. Buscar la fecha usando una expresión regular de fecha (DD/MM/AAAA, DD-MM-AA, etc.)
-            match_fecha = re.search(r"\b\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}\b", contenido)
+            # 2. Remover cualquier hora/tiempo si estuviera presente (ej. 15:30 o 15:30:00) 
+            # Hacemos esto PRIMERO para evitar que se confunda con la fecha o el monto
+            contenido = re.sub(r"\b\d{1,2}:\d{2}(?::\d{2})?\b", "", contenido)
             
-            resto = contenido
+            # 3. Buscar la fecha usando regex combinado (DD/MM/YYYY, YYYY-MM-DD o DD-MM-YY)
+            # Permite espacios opcionales alrededor de los separadores (/ - .)
+            pattern_fecha = r"\b(?:\d{1,2}\s*[/\-.]\s*\d{1,2}\s*[/\-.]\s*(?:\d{4}|\d{2})|\d{4}\s*[/\-.]\s*\d{1,2}\s*[/\-.]\s*\d{1,2})\b"
+            match_fecha = re.search(pattern_fecha, contenido)
             if match_fecha:
-                fecha_ext = match_fecha.group(0).strip()
-                # Removemos la fecha encontrada para buscar el monto en el resto del texto
-                resto = contenido.replace(fecha_ext, "")
-                
-                # Limpiar cualquier caracter no permitido en la fecha
+                fecha_ext = match_fecha.group(0)
+                # Limpiar la fecha conservando dígitos y separadores
                 fecha_ext = re.sub(r"[^\d/\-.]", "", fecha_ext)
+                # Remover la fecha del contenido para evitar interferencia al buscar el monto
+                contenido_sin_fecha = contenido.replace(match_fecha.group(0), "")
+            else:
+                contenido_sin_fecha = contenido
 
-            # 2. Buscar el monto en la parte restante
-            match_monto = re.search(r"\b\d+(?:[.,]\d+)?\b", resto)
+            # 4. Buscar el monto (cualquier número decimal/entero restante)
+            match_monto = re.search(r"\d+(?:[.,]\d+)?", contenido_sin_fecha)
             if match_monto:
                 val = match_monto.group(0).replace(",", ".")
                 try:
