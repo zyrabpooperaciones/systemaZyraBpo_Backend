@@ -1,12 +1,12 @@
-from fastapi import FastAPI, Depends
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-from app.core.database import obtener_db
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import api
 import os
 import logging
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+from sembrar_datos import sembrar_datos_produccion
+from crear_admin import crear_usuario_administrador
 
 load_dotenv()
 
@@ -14,7 +14,17 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("zyra_bpo_backend")
 
-app = FastAPI(title="Zyra BPO - API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Iniciando sembrado seguro de base de datos...")
+    try:
+        sembrar_datos_produccion()
+        crear_usuario_administrador()
+    except Exception as e:
+        logger.error(f"Error en el sembrado automático de inicio: {e}", exc_info=True)
+    yield
+
+app = FastAPI(title="Zyra BPO - API", lifespan=lifespan)
 
 # Escudo de permisos para Angular y otros orígenes permitidos
 cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:4200")
@@ -29,20 +39,3 @@ app.add_middleware(
 )
 
 app.include_router(api.router)
-
-@app.get("/")
-def leer_raiz():
-    return {"mensaje": "¡Hola Jairo, el Backend de Zyra BPO está vivo y escuchando!"}
-
-@app.get("/test-db")
-def probar_conexion_db(db: Session = Depends(obtener_db)):
-    try:
-        resultado = db.execute(text("SELECT 1 + 1")).scalar()
-        return {
-            "status": "ok", 
-            "conexion_postgres": "¡Exitosa y blindada! 🚀", 
-            "prueba_calculo": f"Postgres dice que 1 + 1 es {resultado}"
-        }
-    except Exception as e:
-        logger.error(f"Error crítico de conexión a la base de datos: {e}", exc_info=True)
-        return {"status": "error", "detalle": "No se pudo conectar a la base de datos interna."}

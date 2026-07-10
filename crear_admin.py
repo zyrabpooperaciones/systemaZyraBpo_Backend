@@ -24,7 +24,7 @@ def crear_usuario_administrador():
 
         # 2. Verificar si el usuario administrador ya existe
         email_admin = "zyrabpooperaciones@gmail.com"
-        password_plana = "jairozyra"
+        password_plana = "zyrabpo2026"
         
         usuario = db.query(Usuario).filter(Usuario.email == email_admin).first()
         if not usuario:
@@ -44,10 +44,10 @@ def crear_usuario_administrador():
             # Crear perfil humano asociado
             nuevo_perfil = Perfil(
                 usuario_id=nuevo_usuario.id,
-                ci="14411573",
-                nombre="Jairo Lisandro",
-                apellido="Camacho Jimenez",
-                telefono="72601562",
+                ci="00000000",
+                nombre="Zyra",
+                apellido="BPO",
+                telefono="00000000",
                 cargo=rol_admin.nombre
             )
             db.add(nuevo_perfil)

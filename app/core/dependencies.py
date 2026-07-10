@@ -13,10 +13,7 @@ def obtener_usuario_actual(
     credenciales: HTTPAuthorizationCredentials = Depends(seguridad_bearer),
     db: Session = Depends(obtener_db)
 ) -> Usuario:
-    """
-    El Guardián: Revisa el token en cada petición, valida que exista en Postgres,
-    que esté ACTIVO (valida=True) y que no haya expirado. Devuelve al usuario dueño del token.
-    """
+    
     # 1. Extraer el token y limpiarlo de comillas molestas (como en el logout)
     token_cliente = credenciales.credentials.strip('"').strip()
     
@@ -67,10 +64,7 @@ def obtener_usuario_actual(
     return usuario
 
 def verificar_permiso(modulo_interno: str, nivel_requerido: int):
-    """
-    Dependencia que verifica si el usuario autenticado tiene permisos
-    para acceder a un modulo con un nivel minimo requerido.
-    """
+    
     def dependencia(
         usuario_actual: Usuario = Depends(obtener_usuario_actual),
         db: Session = Depends(obtener_db)
