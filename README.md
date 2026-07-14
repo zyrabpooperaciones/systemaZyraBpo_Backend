@@ -32,7 +32,7 @@ Es una buena práctica aislar las dependencias del proyecto usando un entorno vi
 **En Windows:**
 ```bash
 python -m venv venv
-venv\Scripts\activate
+
 ```
 
 **En Linux / macOS:**

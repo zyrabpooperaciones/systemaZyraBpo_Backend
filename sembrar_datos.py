@@ -1,5 +1,100 @@
 from app.core.database import SessionLocal
 from app.models.auth import Rol, Modulo, RolModuloNivel
+from app.models.cobranzas import (
+    Tramo, MapeoColumnasTramo, ConfiguracionPrioridadTelefonos
+)
+
+def sembrar_tramos_y_mapeos(db):
+    print("====================================================")
+    print("INICIANDO SEMBRADO DE TRAMOS Y CONFIGURACIONES")
+    print("====================================================")
+    
+    # 1. Sembrar el tramo CE1 únicamente
+    nombre_tramo = "CE1"
+    tramo = db.query(Tramo).filter(Tramo.nombre == nombre_tramo).first()
+    if not tramo:
+        tramo = Tramo(nombre=nombre_tramo, activo=True)
+        db.add(tramo)
+        db.flush()
+        print(f"[SEMILLA] Tramo '{nombre_tramo}' creado.")
+    else:
+        print(f"[EXISTE] El tramo '{nombre_tramo}' ya está registrado.")
+
+    # 2. Sembrar catálogo de columnas y teléfonos para CE1
+    columnas_ce1 = [
+        # Grupo 1: Datos
+        {"tipo_campo": "DATO", "campo_sistema": "codigo_cliente", "nombre_columna_excel": "Codigo Cliente", "es_obligatorio": True},
+        {"tipo_campo": "DATO", "campo_sistema": "numero_cargo", "nombre_columna_excel": "Numero de Cargo", "es_obligatorio": True},
+        {"tipo_campo": "DATO", "campo_sistema": "nombre_completo", "nombre_columna_excel": "Nombre completo", "es_obligatorio": True},
+        {"tipo_campo": "DATO", "campo_sistema": "departamento", "nombre_columna_excel": "Departamento", "es_obligatorio": False},
+        {"tipo_campo": "DATO", "campo_sistema": "seccion", "nombre_columna_excel": "Sección", "es_obligatorio": False},
+        {"tipo_campo": "DATO", "campo_sistema": "perfil_riesgo", "nombre_columna_excel": "Perfil Riesgo", "es_obligatorio": False},
+        {"tipo_campo": "DATO", "campo_sistema": "segmento_rolling", "nombre_columna_excel": "Segmento Rolling", "es_obligatorio": False},
+        {"tipo_campo": "DATO", "campo_sistema": "fecha_cierre", "nombre_columna_excel": "Fecha Cierre", "es_obligatorio": False},
+        {"tipo_campo": "DATO", "campo_sistema": "numero_documento", "nombre_columna_excel": "Numero Documento", "es_obligatorio": False},
+        {"tipo_campo": "DATO", "campo_sistema": "dias_atraso", "nombre_columna_excel": "Dias de Atraso", "es_obligatorio": False},
+        {"tipo_campo": "DATO", "campo_sistema": "correo_electronico", "nombre_columna_excel": "Correo Electronico", "es_obligatorio": False},
+        {"tipo_campo": "DATO", "campo_sistema": "campana", "nombre_columna_excel": "Campana", "es_obligatorio": False},
+        # Grupo 2: Montos
+        {"tipo_campo": "MONTO", "campo_sistema": "INICIAL", "nombre_columna_excel": "Importe deuda asignada", "es_obligatorio": True},
+        {"tipo_campo": "MONTO", "campo_sistema": "INTERES", "nombre_columna_excel": "Interes", "es_obligatorio": False},
+        {"tipo_campo": "MONTO", "campo_sistema": "GASTO_ADM", "nombre_columna_excel": "Gasto Administrativo", "es_obligatorio": False},
+        {"tipo_campo": "MONTO", "campo_sistema": "PAGO", "nombre_columna_excel": "Importe de Abonos anteriores", "es_obligatorio": False},
+    ]
+
+    telefonos_ce1 = [
+        {"nombre_columna_excel": "Telefono Móvil", "prioridad": 1},
+        {"nombre_columna_excel": "Telefono Fijo", "prioridad": 2},
+        {"nombre_columna_excel": "Telefono Trabajo", "prioridad": 3},
+        {"nombre_columna_excel": "Telefono Movil Cobranzas", "prioridad": 4},
+        {"nombre_columna_excel": "Telefono Fijo Cobranzas", "prioridad": 5},
+        {"nombre_columna_excel": "Telefono Trabajo Cobranzas", "prioridad": 6},
+        {"nombre_columna_excel": "Telefono Ref. Fam.", "prioridad": 7},
+        {"nombre_columna_excel": "Telefono Ref. No Fam.", "prioridad": 8},
+        {"nombre_columna_excel": "Telefono Ref. Aval", "prioridad": 9},
+        {"nombre_columna_excel": "Telf. Casa Recomendante", "prioridad": 10},
+        {"nombre_columna_excel": "Telf. Celular Recomendante", "prioridad": 11},
+        {"nombre_columna_excel": "Telf. Trabajo Recomendante", "prioridad": 12},
+    ]
+
+    for col_info in columnas_ce1:
+        columna = db.query(MapeoColumnasTramo).filter(
+            MapeoColumnasTramo.tramo_id == tramo.id,
+            MapeoColumnasTramo.campo_sistema == col_info["campo_sistema"]
+        ).first()
+        if not columna:
+            columna = MapeoColumnasTramo(
+                tramo_id=tramo.id,
+                tipo_campo=col_info["tipo_campo"],
+                campo_sistema=col_info["campo_sistema"],
+                nombre_columna_excel=col_info["nombre_columna_excel"],
+                es_obligatorio=col_info["es_obligatorio"],
+                activo=True
+            )
+            db.add(columna)
+            db.flush()
+            print(f"[SEMILLA] Columna '{col_info['campo_sistema']}' creada para CE1.")
+        else:
+            print(f"[EXISTE] La columna '{col_info['campo_sistema']}' ya existe para CE1.")
+
+    for tel_info in telefonos_ce1:
+        telefono = db.query(ConfiguracionPrioridadTelefonos).filter(
+            ConfiguracionPrioridadTelefonos.tramo_id == tramo.id,
+            ConfiguracionPrioridadTelefonos.nombre_columna_excel == tel_info["nombre_columna_excel"]
+        ).first()
+        if not telefono:
+            telefono = ConfiguracionPrioridadTelefonos(
+                tramo_id=tramo.id,
+                nombre_columna_excel=tel_info["nombre_columna_excel"],
+                prioridad=tel_info["prioridad"],
+                activo=True
+            )
+            db.add(telefono)
+            db.flush()
+            print(f"[SEMILLA] Teléfono '{tel_info['nombre_columna_excel']}' creado para CE1.")
+        else:
+            print(f"[EXISTE] El teléfono '{tel_info['nombre_columna_excel']}' ya existe para CE1.")
+
 
 def sembrar_datos_produccion():
     print("====================================================")
@@ -37,6 +132,11 @@ def sembrar_datos_produccion():
                 "nombre_interno": "volcados",
                 "nombre_pantalla": "Generar Volcados",
                 "descripcion": "Generación, visualización y descarga de volcados de datos."
+            },
+            {
+                "nombre_interno": "configuracion_tramos",
+                "nombre_pantalla": "Configurar Tramos",
+                "descripcion": "Gestión de tramos, catálogo de columnas e inventario de prioridades de teléfonos."
             }
         ]
 
@@ -78,6 +178,9 @@ def sembrar_datos_produccion():
                     print(f"[PERMISO] Nivel de acceso actualizado a 3 para Administrador en: {modulo.nombre_pantalla}")
                 else:
                     print(f"[PERMISO] El Administrador ya cuenta con Nivel 3 en: {modulo.nombre_pantalla}")
+
+        # 5. Sembrar tramos, catálogo de columnas y teléfonos (solo CE1 sin plantillas de mapeo)
+        sembrar_tramos_y_mapeos(db)
 
         db.commit()
         print("====================================================")

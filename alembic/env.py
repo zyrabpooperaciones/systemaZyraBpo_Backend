@@ -27,6 +27,11 @@ if config.config_file_name is not None:
 # Importamos Base y los modelos de la base de datos para que Alembic reconozca la estructura de las tablas
 from app.core.database import Base
 from app.models.auth import Rol, Modulo, Usuario, Perfil, RolModuloNivel, Sesion
+from app.models.cobranzas import (
+    Departamento, Seccion, PerfilRiesgo, SegmentoRolling, Cliente, TelefonoCliente,
+    Tramo, MapeoColumnasTramo, ConfiguracionPrioridadTelefonos, PlantillaMapeo,
+    Campana, Cargo, MovimientoCargo
+)
 
 target_metadata = Base.metadata
 

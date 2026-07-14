@@ -16,12 +16,12 @@ logger = logging.getLogger("zyra_bpo_backend")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Iniciando sembrado seguro de base de datos...")
-    try:
-        sembrar_datos_produccion()
-        crear_usuario_administrador()
-    except Exception as e:
-        logger.error(f"Error en el sembrado automático de inicio: {e}", exc_info=True)
+    # logger.info("Iniciando sembrado seguro de base de datos...")
+    # try:
+    #     sembrar_datos_produccion()
+    #     crear_usuario_administrador()
+    # except Exception as e:
+    #     logger.error(f"Error en el sembrado automático de inicio: {e}", exc_info=True)
     yield
 
 app = FastAPI(title="Zyra BPO - API", lifespan=lifespan)
