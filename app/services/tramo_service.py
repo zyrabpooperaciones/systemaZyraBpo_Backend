@@ -117,12 +117,22 @@ class TramoService:
 
         resultado = []
         for tel_info in telefonos:
-            telefono = db.query(ConfiguracionPrioridadTelefonos).filter(
-                ConfiguracionPrioridadTelefonos.tramo_id == tramo_id,
-                ConfiguracionPrioridadTelefonos.nombre_columna_excel == tel_info.nombre_columna_excel
-            ).first()
+            telefono = None
+            if tel_info.id:
+                telefono = db.query(ConfiguracionPrioridadTelefonos).filter(
+                    ConfiguracionPrioridadTelefonos.id == tel_info.id,
+                    ConfiguracionPrioridadTelefonos.tramo_id == tramo_id
+                ).first()
+            
+            if not telefono:
+                # Buscar por nombre original si no hay ID o no se encontró por ID (ej. nuevo registro)
+                telefono = db.query(ConfiguracionPrioridadTelefonos).filter(
+                    ConfiguracionPrioridadTelefonos.tramo_id == tramo_id,
+                    ConfiguracionPrioridadTelefonos.nombre_columna_excel == tel_info.nombre_columna_excel
+                ).first()
 
             if telefono:
+                telefono.nombre_columna_excel = tel_info.nombre_columna_excel
                 telefono.prioridad = tel_info.prioridad
                 telefono.activo = tel_info.activo
             else:
@@ -172,7 +182,12 @@ class TramoService:
                 detail=f"Ya existe una plantilla llamada '{datos.nombre}' para este tramo."
             )
 
-        nueva_plantilla = PlantillaMapeo(tramo_id=tramo_id, nombre=datos.nombre, activo=True)
+        nueva_plantilla = PlantillaMapeo(
+            tramo_id=tramo_id,
+            nombre=datos.nombre,
+            tipo_proceso=datos.tipo_proceso or "BASE_ORIGINAL",
+            activo=True
+        )
         db.add(nueva_plantilla)
         db.flush()
 

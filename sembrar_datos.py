@@ -34,7 +34,8 @@ def sembrar_tramos_y_mapeos(db):
         {"tipo_campo": "DATO", "campo_sistema": "numero_documento", "nombre_columna_excel": "Numero Documento", "es_obligatorio": False},
         {"tipo_campo": "DATO", "campo_sistema": "dias_atraso", "nombre_columna_excel": "Dias de Atraso", "es_obligatorio": False},
         {"tipo_campo": "DATO", "campo_sistema": "correo_electronico", "nombre_columna_excel": "Correo Electronico", "es_obligatorio": False},
-        {"tipo_campo": "DATO", "campo_sistema": "campana", "nombre_columna_excel": "Campana", "es_obligatorio": False},
+        {"tipo_campo": "DATO", "campo_sistema": "campana", "nombre_columna_excel": "Campana", "es_obligatorio": True},
+        {"tipo_campo": "DATO", "campo_sistema": "observacion", "nombre_columna_excel": "Observacion", "es_obligatorio": False},
         # Grupo 2: Montos
         {"tipo_campo": "MONTO", "campo_sistema": "INICIAL", "nombre_columna_excel": "Importe deuda asignada", "es_obligatorio": True},
         {"tipo_campo": "MONTO", "campo_sistema": "INTERES", "nombre_columna_excel": "Interes", "es_obligatorio": False},
@@ -43,7 +44,7 @@ def sembrar_tramos_y_mapeos(db):
     ]
 
     telefonos_ce1 = [
-        {"nombre_columna_excel": "Telefono Móvil", "prioridad": 1},
+        {"nombre_columna_excel": "Telefono Movil", "prioridad": 1},
         {"nombre_columna_excel": "Telefono Fijo", "prioridad": 2},
         {"nombre_columna_excel": "Telefono Trabajo", "prioridad": 3},
         {"nombre_columna_excel": "Telefono Movil Cobranzas", "prioridad": 4},
@@ -75,7 +76,11 @@ def sembrar_tramos_y_mapeos(db):
             db.flush()
             print(f"[SEMILLA] Columna '{col_info['campo_sistema']}' creada para CE1.")
         else:
-            print(f"[EXISTE] La columna '{col_info['campo_sistema']}' ya existe para CE1.")
+            if columna.es_obligatorio != col_info["es_obligatorio"]:
+                columna.es_obligatorio = col_info["es_obligatorio"]
+                print(f"[SEMILLA] Columna '{col_info['campo_sistema']}' actualizada a es_obligatorio={col_info['es_obligatorio']}.")
+            else:
+                print(f"[EXISTE] La columna '{col_info['campo_sistema']}' ya existe para CE1.")
 
     for tel_info in telefonos_ce1:
         telefono = db.query(ConfiguracionPrioridadTelefonos).filter(
@@ -137,10 +142,15 @@ def sembrar_datos_produccion():
                 "nombre_interno": "configuracion_tramos",
                 "nombre_pantalla": "Configurar Tramos",
                 "descripcion": "Gestión de tramos, catálogo de columnas e inventario de prioridades de teléfonos."
+            },
+            {
+                "nombre_interno": "importacion",
+                "nombre_pantalla": "Subida de Bases",
+                "descripcion": "Carga inicial, actualización y saldos de carteras mediante archivos Excel."
             }
         ]
 
-        # 3. Crear módulos nuevos (sin borrar los existentes)
+        # 3. Crear módulos nuevos o actualizar existentes
         modulos_db = []
         for m_info in modulos_a_verificar:
             modulo = db.query(Modulo).filter(Modulo.nombre_interno == m_info["nombre_interno"]).first()
@@ -154,7 +164,12 @@ def sembrar_datos_produccion():
                 db.flush()
                 print(f"[SEMILLA] Módulo nuevo creado: {modulo.nombre_pantalla}")
             else:
-                print(f"[EXISTE] El módulo '{modulo.nombre_pantalla}' ya está registrado.")
+                if modulo.nombre_pantalla != m_info["nombre_pantalla"] or modulo.descripcion != m_info["descripcion"]:
+                    modulo.nombre_pantalla = m_info["nombre_pantalla"]
+                    modulo.descripcion = m_info["descripcion"]
+                    print(f"[SEMILLA] Módulo '{modulo.nombre_interno}' actualizado a '{modulo.nombre_pantalla}'.")
+                else:
+                    print(f"[EXISTE] El módulo '{modulo.nombre_pantalla}' ya está registrado.")
             modulos_db.append(modulo)
 
         # 4. Asegurar permisos Nivel 3 para el Administrador en todos estos módulos

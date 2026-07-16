@@ -44,6 +44,7 @@ class MapeoColumnasTramoResponse(BaseModel):
 # ============================================================================
 
 class ConfiguracionPrioridadTelefonosCreate(BaseModel):
+    id: Optional[int] = None
     nombre_columna_excel: str = Field(..., max_length=100)
     prioridad: int
     activo: bool = True
@@ -64,12 +65,14 @@ class ConfiguracionPrioridadTelefonosResponse(BaseModel):
 
 class PlantillaMapeoCreate(BaseModel):
     nombre: str = Field(..., max_length=100)
+    tipo_proceso: Optional[str] = Field("BASE_ORIGINAL", description="'BASE_ORIGINAL', 'BASE_ACTUALIZACION', 'BASE_SALDOS'")
     copiar_desde_plantilla_id: Optional[int] = None
 
 class PlantillaMapeoResponse(BaseModel):
     id: int
     tramo_id: int
     nombre: str
+    tipo_proceso: str
     activo: bool
 
     class Config:
@@ -79,6 +82,7 @@ class PlantillaMapeoDetailResponse(BaseModel):
     id: int
     tramo_id: int
     nombre: str
+    tipo_proceso: str
     activo: bool
     columnas: List[MapeoColumnasTramoResponse] = []
     telefonos: List[ConfiguracionPrioridadTelefonosResponse] = []

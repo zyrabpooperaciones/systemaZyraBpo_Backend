@@ -147,6 +147,7 @@ class PlantillaMapeo(Base):
     id = Column(Integer, primary_key=True, index=True)
     tramo_id = Column(Integer, ForeignKey("tramos.id", ondelete="CASCADE"), nullable=False)
     nombre = Column(String(100), nullable=False)
+    tipo_proceso = Column(String(50), default="BASE_ORIGINAL", nullable=False)  # 'BASE_ORIGINAL', 'BASE_ACTUALIZACION', 'BASE_SALDOS', 'EXPORTACION'
     activo = Column(Boolean, default=True, nullable=False)
 
     tramo = relationship("Tramo", back_populates="plantillas")
@@ -201,7 +202,7 @@ class Cargo(Base):
     movimientos = relationship("MovimientoCargo", back_populates="cargo", cascade="all, delete-orphan")
 
     __table_args__ = (
-        UniqueConstraint("cliente_id", "numero_cargo", "tramo_id", name="uq_cliente_cargo_tramo"),
+        UniqueConstraint("cliente_id", "numero_cargo", "tramo_id", "campana_id", name="uq_cliente_cargo_tramo_campana"),
     )
 
 class MovimientoCargo(Base):
@@ -214,3 +215,31 @@ class MovimientoCargo(Base):
     fecha_movimiento = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     cargo = relationship("Cargo", back_populates="movimientos")
+
+class HistorialImportacion(Base):
+    __tablename__ = "historial_importaciones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tramo_id = Column(Integer, ForeignKey("tramos.id", ondelete="CASCADE"), nullable=False)
+    nombre_archivo = Column(String(255), nullable=False)
+    hash_archivo = Column(String(64), unique=True, index=True, nullable=False)
+    tipo_subida = Column(String(50), nullable=False)  # 'BASE_ORIGINAL', 'BASE_ACTUALIZACION', 'BASE_SALDOS'
+    fecha_importacion = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    usuario_id = Column(BigInteger, ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False)
+    registros_procesados = Column(Integer, default=0, nullable=False)
+
+    # Contadores de auditoría y montos financieros de la carga
+    clientes_nuevos = Column(Integer, default=0, nullable=False)
+    clientes_actualizados = Column(Integer, default=0, nullable=False)
+    cargos_nuevos = Column(Integer, default=0, nullable=False)
+    cargos_actualizados = Column(Integer, default=0, nullable=False)
+    telefonos_nuevos = Column(Integer, default=0, nullable=False)
+    telefono_uso_actualizados = Column(Integer, default=0, nullable=False)
+    movimientos_financieros_creados = Column(Integer, default=0, nullable=False)
+    monto_deuda_inicial_total = Column(Numeric(12, 2), default=0.0, nullable=False)
+    monto_interes_total = Column(Numeric(12, 2), default=0.0, nullable=False)
+    monto_gasto_adm_total = Column(Numeric(12, 2), default=0.0, nullable=False)
+    duracion_segundos = Column(Numeric(8, 2), default=0.0, nullable=False)
+
+    tramo = relationship("Tramo")
+    usuario = relationship("Usuario")
