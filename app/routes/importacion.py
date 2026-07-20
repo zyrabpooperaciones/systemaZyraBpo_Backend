@@ -174,7 +174,7 @@ async def procesar_archivo_importacion(
         )
 
     # 5. Ejecutar simulación Dry-Run fila por fila
-    errores_filas = ImportacionService.simular_dry_run(file_df, mapeo_columnas)
+    errores_filas = ImportacionService.simular_dry_run(file_df, mapeo_columnas, plantilla.tipo_proceso)
     if errores_filas:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -246,6 +246,7 @@ def listar_historial_importacion(
         HistorialImportacion.monto_deuda_inicial_total,
         HistorialImportacion.monto_interes_total,
         HistorialImportacion.monto_gasto_adm_total,
+        HistorialImportacion.monto_pagos_total,
         HistorialImportacion.duracion_segundos
     ).join(
         Usuario, HistorialImportacion.usuario_id == Usuario.id

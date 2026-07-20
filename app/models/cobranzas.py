@@ -239,6 +239,7 @@ class HistorialImportacion(Base):
     monto_deuda_inicial_total = Column(Numeric(12, 2), default=0.0, nullable=False)
     monto_interes_total = Column(Numeric(12, 2), default=0.0, nullable=False)
     monto_gasto_adm_total = Column(Numeric(12, 2), default=0.0, nullable=False)
+    monto_pagos_total = Column(Numeric(12, 2), default=0.0, nullable=False)
     duracion_segundos = Column(Numeric(8, 2), default=0.0, nullable=False)
 
     tramo = relationship("Tramo")

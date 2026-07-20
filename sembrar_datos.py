@@ -36,6 +36,7 @@ def sembrar_tramos_y_mapeos(db):
         {"tipo_campo": "DATO", "campo_sistema": "correo_electronico", "nombre_columna_excel": "Correo Electronico", "es_obligatorio": False},
         {"tipo_campo": "DATO", "campo_sistema": "campana", "nombre_columna_excel": "Campana", "es_obligatorio": True},
         {"tipo_campo": "DATO", "campo_sistema": "observacion", "nombre_columna_excel": "Observacion", "es_obligatorio": False},
+        {"tipo_campo": "DATO", "campo_sistema": "fecha_pago", "nombre_columna_excel": "Fecha Pago", "es_obligatorio": False},
         # Grupo 2: Montos
         {"tipo_campo": "MONTO", "campo_sistema": "INICIAL", "nombre_columna_excel": "Importe deuda asignada", "es_obligatorio": True},
         {"tipo_campo": "MONTO", "campo_sistema": "INTERES", "nombre_columna_excel": "Interes", "es_obligatorio": False},

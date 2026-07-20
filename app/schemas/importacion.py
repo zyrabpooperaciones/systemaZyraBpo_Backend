@@ -18,6 +18,7 @@ class ImportSummaryResponse(BaseModel):
     monto_deuda_inicial_total: float
     monto_interes_total: float
     monto_gasto_adm_total: float
+    monto_pagos_total: float
     total_filas_procesadas: int
     duracion_segundos: float
 
@@ -53,6 +54,7 @@ class HistorialImportacionResponse(BaseModel):
     monto_deuda_inicial_total: float
     monto_interes_total: float
     monto_gasto_adm_total: float
+    monto_pagos_total: float
     duracion_segundos: float
 
     class Config:
