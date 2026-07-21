@@ -93,3 +93,18 @@ class PlantillaMapeoDetailResponse(BaseModel):
 class PlantillaAsociacionesUpdate(BaseModel):
     columnas_ids: List[int]
     telefonos_ids: List[int]
+
+class TramoResumenKpiResponse(BaseModel):
+    total_clientes: int
+    total_cargos: int
+    cargos_activos: int
+    cargos_vencidos: int
+    cargos_pagados: int
+    fecha_cierre_cercana: Optional[str] = None
+    fecha_cierre_cercana_campanas: List[str] = []
+    monto_inicial_total: float
+    monto_interes_total: float
+    monto_gasto_adm_total: float
+    monto_pagado_total: float
+    saldo_cobrar_total: float
+    porcentaje_recuperacion: float

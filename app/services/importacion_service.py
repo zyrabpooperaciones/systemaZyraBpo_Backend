@@ -575,7 +575,9 @@ class ImportacionService:
                     Cargo.campana_id == campana_id
                 ).first()
 
+                es_cargo_nuevo = False
                 if not cargo:
+                    es_cargo_nuevo = True
                     # Si el proceso no es de tipo Saldos, requerimos que venga el Monto Inicial para crear el cargo
                     if proceso_tipo != "BASE_SALDOS":
                         if not col_monto_inicial or pd.isna(row.get(col_monto_inicial)):
@@ -732,22 +734,34 @@ class ImportacionService:
                 # (PostgreSQL re-calculará todo físicamente en el commit real mediante triggers)
                 
                 # Montos preliminares según el tipo de proceso para el cálculo del estado
-                if proceso_tipo != "BASE_SALDOS":
-                    # Si no es Saldos y no está activo, la deuda inicial se ajusta al valor del Excel
-                    if cargo.estado != "ACTIVO":
+                if es_cargo_nuevo:
+                    if proceso_tipo != "BASE_SALDOS":
                         pre_inicial = float(val_inicial_raw)
                         pre_interes = float(val_interes_raw)
                         pre_gasto = float(val_gasto_raw)
+                        pre_monto_pagado = 0.0
+                    else:
+                        pre_inicial = 0.0
+                        pre_interes = 0.0
+                        pre_gasto = 0.0
+                        pre_monto_pagado = float(val_pago_raw)
+                else:
+                    if proceso_tipo != "BASE_SALDOS":
+                        # Si no es Saldos y no estaba activo, la deuda inicial se ajusta al valor del Excel
+                        if cargo.estado != "ACTIVO":
+                            pre_inicial = float(val_inicial_raw)
+                            pre_interes = float(val_interes_raw)
+                            pre_gasto = float(val_gasto_raw)
+                        else:
+                            pre_inicial = float(cargo.monto_inicial)
+                            pre_interes = max(float(val_interes_raw), float(cargo.monto_interes))
+                            pre_gasto = max(float(val_gasto_raw), float(cargo.monto_gasto_adm))
+                        pre_monto_pagado = float(cargo.monto_pagado)
                     else:
                         pre_inicial = float(cargo.monto_inicial)
-                        pre_interes = max(float(val_interes_raw), float(cargo.monto_interes))
-                        pre_gasto = max(float(val_gasto_raw), float(cargo.monto_gasto_adm))
-                    pre_monto_pagado = float(cargo.monto_pagado if cargo.id else 0.0)
-                else:
-                    pre_inicial = float(cargo.monto_inicial if cargo.id else 0.0)
-                    pre_interes = float(cargo.monto_interes if cargo.id else 0.0)
-                    pre_gasto = float(cargo.monto_gasto_adm if cargo.id else 0.0)
-                    pre_monto_pagado = max(float(val_pago_raw), float(cargo.monto_pagado if cargo.id else 0.0))
+                        pre_interes = float(cargo.monto_interes)
+                        pre_gasto = float(cargo.monto_gasto_adm)
+                        pre_monto_pagado = max(float(val_pago_raw), float(cargo.monto_pagado))
 
                 pre_total_deuda = pre_inicial + pre_interes + pre_gasto
                 pre_saldo_cobrar = pre_total_deuda - pre_monto_pagado - float(cargo.monto_descontar if cargo.id else 0.0)
