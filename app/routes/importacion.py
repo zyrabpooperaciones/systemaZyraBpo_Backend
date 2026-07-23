@@ -89,7 +89,7 @@ async def validar_archivo_importacion(
         )
 
     # 5. Ejecutar simulación Dry-Run fila por fila de tipos de datos e identificadores requeridos
-    errores_filas = ImportacionService.simular_dry_run(file_df, mapeo_columnas)
+    errores_filas = ImportacionService.simular_dry_run(file_df, mapeo_columnas, plantilla.tipo_proceso, db)
     if errores_filas:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -174,7 +174,7 @@ async def procesar_archivo_importacion(
         )
 
     # 5. Ejecutar simulación Dry-Run fila por fila
-    errores_filas = ImportacionService.simular_dry_run(file_df, mapeo_columnas, plantilla.tipo_proceso)
+    errores_filas = ImportacionService.simular_dry_run(file_df, mapeo_columnas, plantilla.tipo_proceso, db)
     if errores_filas:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -30,7 +30,7 @@ from app.models.auth import Rol, Modulo, Usuario, Perfil, RolModuloNivel, Sesion
 from app.models.cobranzas import (
     Departamento, Seccion, PerfilRiesgo, SegmentoRolling, Cliente, TelefonoCliente,
     Tramo, MapeoColumnasTramo, ConfiguracionPrioridadTelefonos, PlantillaMapeo,
-    Campana, Cargo, MovimientoCargo
+    Campana, Cargo, MovimientoCargo, DescuentoConfig
 )
 
 target_metadata = Base.metadata

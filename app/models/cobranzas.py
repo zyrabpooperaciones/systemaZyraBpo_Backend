@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, BigInteger, Boolean, DateTime, ForeignKey, Numeric, Date, UniqueConstraint, Table, func
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import JSONB
 from app.core.database import Base
 
 # ============================================================================
@@ -244,3 +245,29 @@ class HistorialImportacion(Base):
 
     tramo = relationship("Tramo")
     usuario = relationship("Usuario")
+
+class DescuentoConfig(Base):
+    __tablename__ = "descuentos_config"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tramo_id = Column(Integer, ForeignKey("tramos.id", ondelete="CASCADE"), nullable=False)
+    nombre = Column(String(150), nullable=False)
+    
+    # Configuración de Montos (Variables o Fijo)
+    descuento_monto_fijo = Column(Numeric(10, 2), default=0.00, nullable=False)
+    pct_descuento_capital = Column(Numeric(5, 2), default=0.00, nullable=False)
+    pct_descuento_interes = Column(Numeric(5, 2), default=0.00, nullable=False)
+    pct_descuento_gasto = Column(Numeric(5, 2), default=0.00, nullable=False)
+    
+    # Filtros de Segmentación (Almacenados como listas JSONB)
+    campanas = Column(JSONB, default=list, nullable=False)
+    departamentos = Column(JSONB, default=list, nullable=False)
+    perfiles_riesgo = Column(JSONB, default=list, nullable=False)
+    segmentos_rolling = Column(JSONB, default=list, nullable=False)
+    
+    # Estado de Control
+    activo = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relación
+    tramo = relationship("Tramo", backref="descuentos")

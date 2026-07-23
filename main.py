@@ -5,8 +5,9 @@ import os
 import logging
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
-from sembrar_datos import sembrar_datos_produccion
-from crear_admin import crear_usuario_administrador
+import asyncio
+from app.core.database import SessionLocal
+from sqlalchemy import text
 
 load_dotenv()
 
@@ -14,15 +15,46 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("zyra_bpo_backend")
 
+def actualizar_cargos_vencidos_db():
+    db = SessionLocal()
+    try:
+        sql = """
+        UPDATE cargos
+        SET estado = 'VENCIDO'
+        WHERE estado = 'ACTIVO'
+          AND fecha_cierre IS NOT NULL
+          AND fecha_cierre < CURRENT_DATE;
+        """
+        result = db.execute(text(sql))
+        db.commit()
+        if result.rowcount > 0:
+            logger.info(f"Actualización automática de cargos vencidos completada. Filas afectadas: {result.rowcount}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error en la actualización automática de cargos vencidos: {e}", exc_info=True)
+    finally:
+        db.close()
+
+async def scheduler_cargos_vencidos():
+    while True:
+        try:
+            actualizar_cargos_vencidos_db()
+        except Exception as e:
+            logger.error(f"Error en scheduler_cargos_vencidos: {e}")
+        # Esperar 1 hora (3600 segundos) antes de volver a verificar
+        await asyncio.sleep(3600)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # logger.info("Iniciando sembrado seguro de base de datos...")
-    # try:
-    #     sembrar_datos_produccion()
-    #     crear_usuario_administrador()
-    # except Exception as e:
-    #     logger.error(f"Error en el sembrado automático de inicio: {e}", exc_info=True)
+    logger.info("Iniciando planificador de cargos vencidos...")
+    task = asyncio.create_task(scheduler_cargos_vencidos())
     yield
+    logger.info("Cancelando planificador de cargos vencidos...")
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 app = FastAPI(title="Zyra BPO - API", lifespan=lifespan)
 

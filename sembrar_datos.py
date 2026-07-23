@@ -27,7 +27,7 @@ def sembrar_tramos_y_mapeos(db):
         {"tipo_campo": "DATO", "campo_sistema": "numero_cargo", "nombre_columna_excel": "Numero de Cargo", "es_obligatorio": True},
         {"tipo_campo": "DATO", "campo_sistema": "nombre_completo", "nombre_columna_excel": "Nombre completo", "es_obligatorio": True},
         {"tipo_campo": "DATO", "campo_sistema": "departamento", "nombre_columna_excel": "Departamento", "es_obligatorio": False},
-        {"tipo_campo": "DATO", "campo_sistema": "seccion", "nombre_columna_excel": "Sección", "es_obligatorio": False},
+        {"tipo_campo": "DATO", "campo_sistema": "seccion", "nombre_columna_excel": "Seccion", "es_obligatorio": False},
         {"tipo_campo": "DATO", "campo_sistema": "perfil_riesgo", "nombre_columna_excel": "Perfil Riesgo", "es_obligatorio": False},
         {"tipo_campo": "DATO", "campo_sistema": "segmento_rolling", "nombre_columna_excel": "Segmento Rolling", "es_obligatorio": False},
         {"tipo_campo": "DATO", "campo_sistema": "fecha_cierre", "nombre_columna_excel": "Fecha Cierre", "es_obligatorio": False},
@@ -148,6 +148,11 @@ def sembrar_datos_produccion():
                 "nombre_interno": "importacion",
                 "nombre_pantalla": "Subida de Bases",
                 "descripcion": "Carga inicial, actualización y saldos de carteras mediante archivos Excel."
+            },
+            {
+                "nombre_interno": "descuentos",
+                "nombre_pantalla": "Campañas de Descuentos",
+                "descripcion": "Gestión de descuentos temporales condonados por tramo y filtros de segmentación."
             }
         ]
 

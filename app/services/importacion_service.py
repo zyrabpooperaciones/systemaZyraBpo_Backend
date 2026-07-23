@@ -5,6 +5,7 @@ import time
 from datetime import datetime, date, timedelta
 from typing import List, Tuple, Dict, Any
 import pandas as pd
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.cobranzas import (
     Cliente, Cargo, TelefonoCliente, MovimientoCargo, HistorialImportacion,
@@ -12,6 +13,7 @@ from app.models.cobranzas import (
     Campana, Departamento, Seccion, PerfilRiesgo, SegmentoRolling
 )
 from app.schemas.importacion import ValidationErrorDetail, ImportSummaryResponse
+from app.services.descuento_service import calcular_descuento_cargo
 
 class ImportacionService:
 
@@ -47,12 +49,18 @@ class ImportacionService:
                 
         # Parseo de Strings
         text = str(value).strip()
-        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"):
+        # Si la cadena incluye hora (ej. '2026-07-13 00:00:00' o '13/07/2026 00:00:00'), tomar la primera parte o probar formatos con tiempo
+        text_solo_fecha = text.split(" ")[0].split("T")[0]
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S"):
             try:
                 return datetime.strptime(text, fmt).date()
             except ValueError:
-                continue
-        raise ValueError(f"Formato de fecha '{text}' no reconocido (esperado DD/MM/AAAA)")
+                pass
+            try:
+                return datetime.strptime(text_solo_fecha, fmt).date()
+            except ValueError:
+                pass
+        raise ValueError(f"Formato de fecha '{text}' no reconocido (esperado DD/MM/AAAA o AAAA-MM-DD)")
 
     @staticmethod
     def parse_number(value: Any) -> float:
@@ -92,10 +100,13 @@ class ImportacionService:
             col_excel = col_tramo.nombre_columna_excel.strip()
             es_obligatoria = col_tramo.es_obligatorio
 
+            # Permitir nombres alternativos separados por '|' o ','
+            alternativas = [alt.strip().lower() for alt in col_excel.replace(",", "|").split("|") if alt.strip()]
+
             # Buscar coincidencia (sin distinguir mayúsculas ni espacios)
             idx = -1
             for i, h in enumerate(headers_excel):
-                if h == col_excel.lower():
+                if h in alternativas:
                     idx = i
                     break
 
@@ -129,7 +140,7 @@ class ImportacionService:
 
     @classmethod
     def simular_dry_run(
-        cls, file_df: pd.DataFrame, mapeo_columnas: Dict[str, str], tipo_proceso: str = "BASE_ORIGINAL"
+        cls, file_df: pd.DataFrame, mapeo_columnas: Dict[str, str], tipo_proceso: str = "BASE_ORIGINAL", db: Session = None
     ) -> List[ValidationErrorDetail]:
         """
         Realiza la validación fila por fila del Excel sin tocar la base de datos (Opción A).
@@ -151,6 +162,17 @@ class ImportacionService:
 
         proceso_tipo = str(tipo_proceso).strip().upper()
 
+        # Si es un proceso de Saldos, precargar en memoria los códigos de cliente existentes para validar rápidamente
+        codigos_existentes = set()
+        if proceso_tipo == "BASE_SALDOS" and db is not None and col_cliente and col_cliente in file_df.columns:
+            codigos_excel = [str(c).strip() for c in file_df[col_cliente].dropna().unique() if str(c).strip()]
+            if codigos_excel:
+                codigos_existentes = set(
+                    res[0] for res in db.query(Cliente.codigo_cliente_belcor).filter(
+                        Cliente.codigo_cliente_belcor.in_(codigos_excel)
+                    ).all()
+                )
+
         for index, row in file_df.iterrows():
             fila_num = index + 2  # Pandas es 0-indexed y la fila 1 son cabeceras
 
@@ -166,6 +188,14 @@ class ImportacionService:
                     columna=col_cliente or "Código Cliente",
                     mensaje="El Código de Cliente es obligatorio y no puede estar vacío."
                 ))
+            elif proceso_tipo == "BASE_SALDOS" and db is not None:
+                cod_str = str(val_cliente).strip()
+                if cod_str != "" and cod_str not in codigos_existentes:
+                    errores.append(ValidationErrorDetail(
+                        fila=fila_num,
+                        columna=col_cliente or "Código Cliente",
+                        mensaje=f"El deudor con código '{cod_str}' no existe en el sistema. Debes cargarlo previamente mediante una Base Inicial o de Actualización."
+                    ))
             if pd.isna(val_cargo) or str(val_cargo).strip() == "":
                 errores.append(ValidationErrorDetail(
                     fila=fila_num,
@@ -472,15 +502,28 @@ class ImportacionService:
 
                 for tel_cfg in telefonos_prioridad:
                     col_base = tel_cfg.nombre_columna_excel.strip()
-                    col_base_esc = re.escape(col_base)
-                    # Patrón: nombre base opcionalmente seguido de espacio y dígitos (ej. "Telefono Móvil 1" o "Telefono Móvil1")
-                    pattern = re.compile(rf"^{col_base_esc}(?:\s*(\d+))?$", re.IGNORECASE)
+                    # Permitir nombres alternativos separados por '|' o ','
+                    alternativas_tel = [alt.strip() for alt in col_base.replace(",", "|").split("|") if alt.strip()]
+                    col_base_canonical = alternativas_tel[0]
+                    
+                    # Crear patrones regex para cada alternativa de columna telefónica
+                    patterns = []
+                    for alt in alternativas_tel:
+                        alt_esc = re.escape(alt)
+                        patterns.append(re.compile(rf"^{alt_esc}(?:\s*(\d+))?$", re.IGNORECASE))
 
                     # 1. Agrupar candidatos del Excel en esta fila para la columna base
                     candidatos_columna_fila = []
                     for col_excel in row.index:
                         col_excel_str = str(col_excel).strip()
-                        match = pattern.match(col_excel_str)
+                        
+                        match = None
+                        for pat in patterns:
+                            m = pat.match(col_excel_str)
+                            if m:
+                                match = m
+                                break
+                                
                         if match:
                             val_tel = row.get(col_excel)
                             if not pd.isna(val_tel):
@@ -496,17 +539,17 @@ class ImportacionService:
                     # 3. Procesar cada teléfono en orden secuencial
                     for tel_limpio, col_excel_str, _ in candidatos_columna_fila:
                         cache_tel_key = (cliente.id, tel_limpio)
-                        key_base = (cliente.id, col_base)
+                        key_base = (cliente.id, col_base_canonical)
                         existing_prios = telefonos_por_cliente_tipo.get(key_base, [])
 
                         if cache_tel_key not in telefonos_existentes_cache:
                             # Teléfono nuevo: Calcular sufijo y prioridad de forma correlativa
                             sufijo_nuevo = len(existing_prios)
                             if sufijo_nuevo == 0:
-                                tipo_registrado = col_base
+                                tipo_registrado = col_base_canonical
                                 prioridad_registrada = float(tel_cfg.prioridad)
                             else:
-                                tipo_registrado = f"{col_base} {sufijo_nuevo}"
+                                tipo_registrado = f"{col_base_canonical} {sufijo_nuevo}"
                                 prioridad_registrada = float(tel_cfg.prioridad) + (sufijo_nuevo * 0.1)
 
                             # Añadir a la caché local
@@ -532,7 +575,7 @@ class ImportacionService:
                         else:
                             # Teléfono existente: Buscar su prioridad y tipo real en la base de datos
                             prio_db = telefonos_db_prioridades.get(cache_tel_key, float(tel_cfg.prioridad))
-                            tipo_db = telefonos_db_tipos.get(cache_tel_key, col_base)
+                            tipo_db = telefonos_db_tipos.get(cache_tel_key, col_base_canonical)
                             candidatos_telefono.append((tel_limpio, tipo_db, prio_db))
 
                 # Clasificar teléfonos por prioridad y elegir el mejor para telefono_uso (marcado rápido)
@@ -628,7 +671,7 @@ class ImportacionService:
                     else:
                         # Si es de tipo Saldos, se crea la cuenta directamente con el pago recibido
                         if val_pago_raw > 0:
-                            fecha_mov_dt = datetime.combine(fecha_pago_val, datetime.min.time()) if fecha_pago_val else func.now()
+                            fecha_mov_dt = datetime.combine(fecha_pago_val, datetime.min.time()) if fecha_pago_val else datetime.now()
                             mov_p = MovimientoCargo(
                                 cargo_id=cargo.id,
                                 tipo_movimiento="PAGO",
@@ -716,15 +759,47 @@ class ImportacionService:
                         # Solo procesamos pagos por diferencia. Ignoramos deudas, intereses y gastos por completo.
                         if val_pago_raw > float(cargo.monto_pagado):
                             diff_p = val_pago_raw - float(cargo.monto_pagado)
-                            fecha_mov_dt = datetime.combine(fecha_pago_val, datetime.min.time()) if fecha_pago_val else func.now()
-                            mov_p_diff = MovimientoCargo(
-                                cargo_id=cargo.id,
-                                tipo_movimiento="PAGO",
-                                monto=diff_p,
-                                fecha_movimiento=fecha_mov_dt
-                            )
-                            db.add(mov_p_diff)
-                            movimientos_financieros_creados += 1
+                            fecha_mov_dt = datetime.combine(fecha_pago_val, datetime.min.time()) if fecha_pago_val else datetime.now()
+                            
+                            # Calcular descuento activo aplicable
+                            desc_val = calcular_descuento_cargo(cargo, db)
+                            saldo_neto_liq = float(cargo.saldo_cobrar) - desc_val
+                            
+                            # Si califica para descuento y el pago cubre el saldo neto liquidable (con margen de 1.0)
+                            if desc_val > 0 and diff_p >= (saldo_neto_liq - 1.0):
+                                # Ajustar descuento para que la suma no exceda el saldo cobrar actual
+                                desc_final = max(min(desc_val, float(cargo.saldo_cobrar) - diff_p), 0.0)
+                                
+                                mov_p_diff = MovimientoCargo(
+                                    cargo_id=cargo.id,
+                                    tipo_movimiento="PAGO",
+                                    monto=diff_p,
+                                    fecha_movimiento=fecha_mov_dt
+                                )
+                                db.add(mov_p_diff)
+                                
+                                if desc_final > 0:
+                                    mov_desc = MovimientoCargo(
+                                        cargo_id=cargo.id,
+                                        tipo_movimiento="DESCUENTO",
+                                        monto=desc_final,
+                                        fecha_movimiento=fecha_mov_dt
+                                    )
+                                    db.add(mov_desc)
+                                    movimientos_financieros_creados += 2
+                                else:
+                                    movimientos_financieros_creados += 1
+                            else:
+                                # Pago normal sin descuento
+                                mov_p_diff = MovimientoCargo(
+                                    cargo_id=cargo.id,
+                                    tipo_movimiento="PAGO",
+                                    monto=diff_p,
+                                    fecha_movimiento=fecha_mov_dt
+                                )
+                                db.add(mov_p_diff)
+                                movimientos_financieros_creados += 1
+
                             monto_pagos_total += diff_p
 
                     cargos_actualizados += 1

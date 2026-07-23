@@ -24,6 +24,8 @@ class CargoClienteDetalle(BaseModel):
     monto_gasto_adm: float
     monto_pagado: float
     saldo_cobrar: float
+    descuento_aplicable: float = 0.0
+    monto_para_liquidar: float = 0.0
     estado: str
     observacion: Optional[str] = None
 
@@ -64,6 +66,7 @@ class ClienteSearchItem(BaseModel):
     numero_documento: Optional[str] = None
     cantidad_cargos: int
     saldo_total_pendiente: float
+    saldo_neto_pendiente: float = 0.0
     telefono_principal: Optional[str] = None
     campanas_activas: List[str]
     estado_general: str

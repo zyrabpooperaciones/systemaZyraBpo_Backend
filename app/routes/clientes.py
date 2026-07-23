@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, status, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import obtener_db
@@ -10,6 +11,7 @@ from app.schemas.clientes import (
     ClienteSearchItem, TelefonoClienteDetalle, CargoClienteDetalle,
     MovimientoCargoDetalle
 )
+from app.services.descuento_service import calcular_descuento_cargo
 
 router = APIRouter(prefix="/clientes", tags=["Modulo de Clientes"])
 
@@ -45,7 +47,7 @@ def buscar_clientes(
     if query:
         q_text = f"%{query}%"
         # Subquery para buscar por número telefónico
-        has_phone = db.query(TelefonoCliente.cliente_id).filter(TelefonoCliente.numero.ilike(q_text)).subquery()
+        has_phone = select(TelefonoCliente.cliente_id).filter(TelefonoCliente.numero.ilike(q_text))
         base_query = base_query.filter(
             (Cliente.codigo_cliente_belcor.ilike(q_text)) |
             (Cliente.nombre_completo.ilike(q_text)) |
@@ -74,6 +76,11 @@ def buscar_clientes(
         cargos_list = cargos_q.all()
 
         saldo_total = sum(float(cargo.saldo_cobrar) for cargo in cargos_list)
+        saldo_neto_total = 0.0
+        for cargo in cargos_list:
+            desc_val = calcular_descuento_cargo(cargo, db)
+            saldo_neto_total += max(float(cargo.saldo_cobrar) - desc_val, 0.0)
+
         campanas = list(set(cargo.campana.nombre for cargo in cargos_list if cargo.campana))
 
         # Teléfono principal (menor prioridad = más importante)
@@ -102,6 +109,7 @@ def buscar_clientes(
             numero_documento=c.numero_documento,
             cantidad_cargos=len(cargos_list),
             saldo_total_pendiente=saldo_total,
+            saldo_neto_pendiente=round(saldo_neto_total, 2),
             telefono_principal=tel_str,
             campanas_activas=campanas,
             estado_general=est_gen
@@ -136,6 +144,27 @@ def obtener_detalle_cliente_360(
         Cargo.cliente_id == cliente_id
     ).order_by(Cargo.numero_cargo).all()
 
+    cargos_res = []
+    for cg in cargos:
+        desc_val = calcular_descuento_cargo(cg, db)
+        liq_val = round(max(float(cg.saldo_cobrar) - desc_val, 0.0), 2)
+        cargos_res.append(CargoClienteDetalle(
+            id=cg.id,
+            numero_cargo=cg.numero_cargo,
+            campana_nombre=cg.campana.nombre if cg.campana else "",
+            dias_atraso=cg.dias_atraso,
+            fecha_cierre=cg.fecha_cierre,
+            monto_inicial=float(cg.monto_inicial),
+            monto_interes=float(cg.monto_interes),
+            monto_gasto_adm=float(cg.monto_gasto_adm),
+            monto_pagado=float(cg.monto_pagado),
+            saldo_cobrar=float(cg.saldo_cobrar),
+            descuento_aplicable=desc_val,
+            monto_para_liquidar=liq_val,
+            estado=cg.estado,
+            observacion=cg.observacion
+        ))
+
     # Cargar movimientos contables cruzando con cargos para obtener el numero_cargo
     movimientos = db.query(MovimientoCargo).join(Cargo).filter(
         Cargo.cliente_id == cliente_id
@@ -162,20 +191,7 @@ def obtener_detalle_cliente_360(
         perfil_riesgo=cliente.perfil_riesgo.nombre if cliente.perfil_riesgo else None,
         segmento_rolling=cliente.segmento_rolling.nombre if cliente.segmento_rolling else None,
         telefonos=[TelefonoClienteDetalle.model_validate(t) for t in telefonos],
-        cargos=[CargoClienteDetalle(
-            id=cg.id,
-            numero_cargo=cg.numero_cargo,
-            campana_nombre=cg.campana.nombre if cg.campana else "",
-            dias_atraso=cg.dias_atraso,
-            fecha_cierre=cg.fecha_cierre,
-            monto_inicial=float(cg.monto_inicial),
-            monto_interes=float(cg.monto_interes),
-            monto_gasto_adm=float(cg.monto_gasto_adm),
-            monto_pagado=float(cg.monto_pagado),
-            saldo_cobrar=float(cg.saldo_cobrar),
-            estado=cg.estado,
-            observacion=cg.observacion
-        ) for cg in cargos],
+        cargos=cargos_res,
         movimientos=movimientos_res
     )
 
