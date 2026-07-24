@@ -657,8 +657,6 @@ class ImportacionService:
                     monto_deuda_inicial_total += val_inicial_raw
                     monto_interes_total += val_interes_raw
                     monto_gasto_adm_total += val_gasto_raw
-                else:
-                    monto_pagos_total += val_pago_raw
 
                 # Buscar si el cargo ya existe para este deudor, tramo y campaña
                 cargo = db.query(Cargo).filter(
@@ -700,6 +698,7 @@ class ImportacionService:
                         )
                         db.add(mov_inicial)
                         movimientos_financieros_creados += 1
+                        monto_deuda_inicial_total += val_inicial_raw
 
                         if val_interes_raw > 0:
                             mov_int = MovimientoCargo(
@@ -709,6 +708,7 @@ class ImportacionService:
                             )
                             db.add(mov_int)
                             movimientos_financieros_creados += 1
+                            monto_interes_total += val_interes_raw
 
                         if val_gasto_raw > 0:
                             mov_g = MovimientoCargo(
@@ -718,6 +718,7 @@ class ImportacionService:
                             )
                             db.add(mov_g)
                             movimientos_financieros_creados += 1
+                            monto_gasto_adm_total += val_gasto_raw
                     else:
                         # Si es de tipo Saldos, se crea la cuenta directamente con el pago recibido
                         if val_pago_raw > 0:
@@ -730,6 +731,7 @@ class ImportacionService:
                             )
                             db.add(mov_p)
                             movimientos_financieros_creados += 1
+                            monto_pagos_total += val_pago_raw
 
                     cargos_nuevos += 1
                 else:
@@ -756,6 +758,7 @@ class ImportacionService:
                                 )
                                 db.add(mov_inicial_diff)
                                 movimientos_financieros_creados += 1
+                                monto_deuda_inicial_total += diff_inicial
 
                         # 2. Intereses (INTERES)
                         if is_activo:
@@ -769,6 +772,7 @@ class ImportacionService:
                                 )
                                 db.add(mov_int_diff)
                                 movimientos_financieros_creados += 1
+                                monto_interes_total += diff_int
                         else:
                             # Aumentos o reducciones permitidas en deudores históricos
                             if val_interes_raw != float(cargo.monto_interes):
@@ -780,6 +784,7 @@ class ImportacionService:
                                 )
                                 db.add(mov_int_diff)
                                 movimientos_financieros_creados += 1
+                                monto_interes_total += diff_int
 
                         # 3. Gastos Administrativos (GASTO_ADM)
                         if is_activo:
@@ -793,6 +798,7 @@ class ImportacionService:
                                 )
                                 db.add(mov_g_diff)
                                 movimientos_financieros_creados += 1
+                                monto_gasto_adm_total += diff_g
                         else:
                             # Aumentos o reducciones permitidas en deudores históricos
                             if val_gasto_raw != float(cargo.monto_gasto_adm):
@@ -804,6 +810,7 @@ class ImportacionService:
                                 )
                                 db.add(mov_g_diff)
                                 movimientos_financieros_creados += 1
+                                monto_gasto_adm_total += diff_g
                     else:
                         # --- PROCESAMIENTO DE SALDOS ---
                         # Solo procesamos pagos por diferencia. Ignoramos deudas, intereses y gastos por completo.
