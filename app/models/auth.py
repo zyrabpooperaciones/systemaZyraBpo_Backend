@@ -36,6 +36,12 @@ class Usuario(Base):
     perfil = relationship("Perfil", back_populates="usuario", uselist=False)
     sesiones = relationship("Sesion", back_populates="usuario")
 
+    @property
+    def nombre_completo(self) -> str:
+        if self.perfil and self.perfil.nombre:
+            return f"{self.perfil.nombre} {self.perfil.apellido}".strip()
+        return self.email
+
 class Perfil(Base):
     __tablename__ = "perfiles"
 

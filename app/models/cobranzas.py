@@ -196,10 +196,17 @@ class Cargo(Base):
     deuda_total = Column(Numeric(10, 2), default=0.00, nullable=False)
     saldo_cobrar = Column(Numeric(10, 2), default=0.00, nullable=False)
 
+    # Control de Inhabilitación (Soft Delete)
+    activo = Column(Boolean, default=True, nullable=False)
+    motivo_deshabilitacion = Column(String(255), nullable=True)
+    fecha_deshabilitacion = Column(DateTime(timezone=True), nullable=True)
+    usuario_deshabilitacion_id = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+
     # Relaciones
     cliente = relationship("Cliente", back_populates="cargos")
     tramo = relationship("Tramo", back_populates="cargos")
     campana = relationship("Campana", back_populates="cargos")
+    usuario_deshabilitacion = relationship("Usuario", foreign_keys=[usuario_deshabilitacion_id])
     movimientos = relationship("MovimientoCargo", back_populates="cargo", cascade="all, delete-orphan")
 
     __table_args__ = (

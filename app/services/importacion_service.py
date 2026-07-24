@@ -156,22 +156,43 @@ class ImportacionService:
         col_monto_inicial = mapeo_columnas.get("INICIAL")
         col_interes = mapeo_columnas.get("INTERES")
         col_gasto_adm = mapeo_columnas.get("GASTO_ADM")
+        col_pago = mapeo_columnas.get("PAGO")
         col_fecha_cierre = mapeo_columnas.get("fecha_cierre")
         col_fecha_pago = mapeo_columnas.get("fecha_pago")
         col_dias_atraso = mapeo_columnas.get("dias_atraso")
 
         proceso_tipo = str(tipo_proceso).strip().upper()
 
-        # Si es un proceso de Saldos, precargar en memoria los códigos de cliente existentes para validar rápidamente
+        # Precargar códigos de clientes y saldos de cargos existentes para validar existencia y sobrepagos rápidamente
         codigos_existentes = set()
-        if proceso_tipo == "BASE_SALDOS" and db is not None and col_cliente and col_cliente in file_df.columns:
+        cargos_info_map = {}  # key: (numero_cargo_str, codigo_cliente_str) -> (deuda_total, monto_pagado, saldo_cobrar)
+        if db is not None and col_cliente and col_cliente in file_df.columns:
             codigos_excel = [str(c).strip() for c in file_df[col_cliente].dropna().unique() if str(c).strip()]
             if codigos_excel:
-                codigos_existentes = set(
-                    res[0] for res in db.query(Cliente.codigo_cliente_belcor).filter(
-                        Cliente.codigo_cliente_belcor.in_(codigos_excel)
-                    ).all()
-                )
+                if proceso_tipo == "BASE_SALDOS":
+                    codigos_existentes = set(
+                        res[0] for res in db.query(Cliente.codigo_cliente_belcor).filter(
+                            Cliente.codigo_cliente_belcor.in_(codigos_excel)
+                        ).all()
+                    )
+
+                if col_cargo and col_cargo in file_df.columns:
+                    cargos_excel = [str(c).strip() for c in file_df[col_cargo].dropna().unique() if str(c).strip()]
+                    if cargos_excel:
+                        db_cargos = db.query(
+                            Cargo.numero_cargo,
+                            Cliente.codigo_cliente_belcor,
+                            Cargo.deuda_total,
+                            Cargo.monto_pagado,
+                            Cargo.saldo_cobrar
+                        ).join(Cliente, Cargo.cliente_id == Cliente.id).filter(
+                            Cargo.numero_cargo.in_(cargos_excel)
+                        ).all()
+
+                        for num_c, cod_cli, d_tot, m_pag, s_cob in db_cargos:
+                            cargos_info_map[(str(num_c).strip(), str(cod_cli).strip())] = (
+                                float(d_tot), float(m_pag), float(s_cob)
+                            )
 
         for index, row in file_df.iterrows():
             fila_num = index + 2  # Pandas es 0-indexed y la fila 1 son cabeceras
@@ -257,6 +278,35 @@ class ImportacionService:
                     errores.append(ValidationErrorDetail(
                         fila=fila_num,
                         columna=col_gasto_adm,
+                        mensaje=str(e)
+                    ))
+
+            # 2.1. Validación de Sobrepago (Monto Pagado > Deuda Total o Saldo Cobrar)
+            if col_pago and not pd.isna(row.get(col_pago)):
+                try:
+                    val_pago_num = cls.parse_number(row.get(col_pago))
+                    if val_pago_num > 0 and db is not None:
+                        num_c_str = str(val_cargo).strip() if val_cargo and not pd.isna(row.get(col_cargo)) else ""
+                        cod_cli_str = str(val_cliente).strip() if val_cliente and not pd.isna(row.get(col_cliente)) else ""
+                        cargo_info = cargos_info_map.get((num_c_str, cod_cli_str))
+                        if cargo_info:
+                            deuda_total_db, monto_pagado_db, saldo_cobrar_db = cargo_info
+                            pago_incremental = val_pago_num - monto_pagado_db if (proceso_tipo == "BASE_SALDOS" and val_pago_num >= monto_pagado_db) else val_pago_num
+
+                            if val_pago_num > (deuda_total_db + 1.00) or pago_incremental > (saldo_cobrar_db + 1.00):
+                                errores.append(ValidationErrorDetail(
+                                    fila=fila_num,
+                                    columna=col_pago,
+                                    mensaje=(
+                                        f"El pago reportado (Bs {val_pago_num:,.2f}) supera la deuda total registrada del cargo "
+                                        f"(Deuda Bruta: Bs {deuda_total_db:,.2f}, Saldo pendiente: Bs {saldo_cobrar_db:,.2f}). "
+                                        f"Verifique la deuda inicial o ajuste la cifra del abono en el archivo Excel."
+                                    )
+                                ))
+                except ValueError as e:
+                    errores.append(ValidationErrorDetail(
+                        fila=fila_num,
+                        columna=col_pago,
                         mensaje=str(e)
                     ))
 
@@ -759,6 +809,12 @@ class ImportacionService:
                         # Solo procesamos pagos por diferencia. Ignoramos deudas, intereses y gastos por completo.
                         if val_pago_raw > float(cargo.monto_pagado):
                             diff_p = val_pago_raw - float(cargo.monto_pagado)
+                            if diff_p > (float(cargo.saldo_cobrar) + 1.00):
+                                raise ValueError(
+                                    f"Fila {index + 2}: El pago reportado de Bs {val_pago_raw:,.2f} para el cargo '{num_cargo_val}' "
+                                    f"supera el saldo pendiente registrado (Bs {float(cargo.saldo_cobrar):,.2f}). "
+                                    f"Por favor verifique la deuda inicial o ajuste la cifra del abono en el archivo Excel."
+                                )
                             fecha_mov_dt = datetime.combine(fecha_pago_val, datetime.min.time()) if fecha_pago_val else datetime.now()
                             
                             # Calcular descuento activo aplicable

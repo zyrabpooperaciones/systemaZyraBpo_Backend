@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.routes import auth, roles, usuarios, volcados, tramos, importacion, clientes, descuentos
+from app.routes import auth, roles, usuarios, volcados, tramos, importacion, clientes, descuentos, metricas
 
 router = APIRouter()
 
@@ -12,6 +12,7 @@ router.include_router(tramos.router)
 router.include_router(importacion.router)
 router.include_router(clientes.router)
 router.include_router(descuentos.router)
+router.include_router(metricas.router)
 
 # Aquí agregaremos las nuevas rutas en el futuro, por ejemplo:
 # router.include_router(campañas.router)

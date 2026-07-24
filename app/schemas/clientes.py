@@ -28,9 +28,17 @@ class CargoClienteDetalle(BaseModel):
     monto_para_liquidar: float = 0.0
     estado: str
     observacion: Optional[str] = None
+    activo: bool = True
+    motivo_deshabilitacion: Optional[str] = None
+    fecha_deshabilitacion: Optional[datetime] = None
+    usuario_deshabilitacion_nombre: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+class DeshabilitarCargoRequest(BaseModel):
+    motivo: str
+    password: str
 
 class MovimientoCargoDetalle(BaseModel):
     id: int

@@ -153,6 +153,11 @@ def sembrar_datos_produccion():
                 "nombre_interno": "descuentos",
                 "nombre_pantalla": "Campañas de Descuentos",
                 "descripcion": "Gestión de descuentos temporales condonados por tramo y filtros de segmentación."
+            },
+            {
+                "nombre_interno": "metricas",
+                "nombre_pantalla": "Resumen de Cartera",
+                "descripcion": "Indicadores financieros, deudores, pagos y estados de cartera."
             }
         ]
 

@@ -22,3 +22,10 @@ __pycache__/
 *.ntvs*
 *.njsproj
 *.sln
+
+# --- RESPALDOS Y BASES DE DATOS ---
+*.sql
+*.dump
+*.tar.gz
+backups/
+downloads/
